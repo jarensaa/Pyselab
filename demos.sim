@@ -1,0 +1,3038 @@
+comment removed by Henning Normann, IDB 14.9.86. options(/E);
+
+comment use of reserved word Switch updated according to Standard SIMULA
+        by J|rn Viken, IDT 22.9.87.;
+
+comment procedure Noreport added in class Tab to prevent report of 
+        user-selected objects in the DEMOS report call. A boolean Zyqnoreport
+        is testet for each object in DEMOS-procedure "Report" near the end
+        of this file. Change made by Knut H. Smevold, 18.8.88.;
+ 
+comment Tab class Tally:  calculations in the standard deviation expression
+        are rearranged to be able to handle larger number of observations.  
+        The change is simply to devide by Obs in both nominator and 
+        denominator, which removes the factor Obs*(Obs-1)!
+        Change made by Poul E. Heegaard, IDT, 01.09.94 ;
+
+comment REAL is extended to LONG REAL.
+        Change made by Poul E. Heegaard, IDT, 01.09.94 ; 
+
+comment Count are included in the REPLICATION report.
+        Change made by Poul E. Heegaard, IDT, 02.09.94 ; 
+
+comment Calculation of standard error of sample mean is 
+        added standard reports
+        Change made by Poul E. Heegaard, IDT, 22.03.95 ; 
+
+comment New procedures:
+        1) Quantile - returns the quantile in a Student-T or Normal 
+                      distribution, depend on the number of observations,
+        2) ConfWidth - returns the confidence width given the 
+                       standard deviation and number of observations.
+        Change made by Poul E. Heegaard, IDT, 05.05.95 ; 
+
+comment New attribute functions made for TALLY:
+	       Mean         - returns the mean value of a TALLY
+	       Sdev         - returns the standard deviation of a TALLY
+	       UpperConf(Alpha) - returns the upper alpha-conf. limit of a TALLY
+	       LowerConf(Alpha) - returns the lover alpha-conf. limit of a TALLY
+        Changes made by Poul E. Heegaard, IDT, 13.10.95 ; 
+
+comment Rdist class Rayleigh: new class generating variates from the 
+        Rayleigh distribution using the method of inverse-function is
+        included (as an example in course 45081 Diskrete event simulation.
+        A detailed describtion of all necessary chances are documented
+        in the postion in the code where the patch is included.  All
+        comments regarding this changes are starting with "! 960917/peh".
+        Describtion:
+
+        RDIST CLASS RAYLEIGH(A) long real A
+        BEGIN
+          long real PROCEDURE SAMPLE
+          sigma = SQRT(2/pi)*A 
+        END ***RAYLEIGH***
+        A call on sample returns a drawing from a RAYLEIGH distribution
+        with mean value A.
+
+        The old "demos.sim" without this change are saved as "demos0996.sim"
+        Changes made by Poul E. Heegaard, ITEM, 17.09.96 ; 
+
+comment Rdist class Pareto: new class generating variates from the 
+        Pareto distribution using the method of inverse-function is
+        included. The method allows the user to define an upper limit
+        m of the generated variates. If m<=0, no upper limit exits (c=1).
+        A detailed describtion of all necessary chances are documented
+        in the postion in the code where the patch is included.  All
+        comments regarding this changes are starting with "! 991021/peh".
+        Describtion:
+
+	 Rdist class Pareto(k,alpha,m) INTEGER k long real alpha,m 
+	 BEGIN   
+	    REAL c
+	    long real procedure Sample
+	    BEGIN  
+	       Sample := k/(((1-Zyqsample*c))**(1.0/alpha))
+	    END *** SAMPLE ***
+	 END *** Pareto *** ;
+
+comment Adaption to the CIM Simula compiler and linker:
+
+	All the virtual procedures in the TAB base class (right below) 
+        now are completey declared with type as required by the CIM
+	compiler.  In the cases where the procedure has no return 
+	type, the procedure is given INTEGER type.
+        The procedure definitions in the TAB subclasses are also
+        updated.
+
+	Changes made by Idar Fagereng, ITEM 1999/12/07;
+
+SIMSET class Demos; 
+begin
+
+    comment------------------ T A B ----------------------------;
+
+    class Tab(Title); value Title; text Title;  
+    virtual : 
+    procedure Reset IS INTEGER PROCEDURE Reset;; 
+    procedure Report IS INTEGER PROCEDURE Report;;
+    procedure Rreport IS INTEGER PROCEDURE Rreport;;
+    procedure Rupdate IS INTEGER PROCEDURE Rupdate;;
+    procedure Sdev IS LONG REAL PROCEDURE Sdev;; 
+    procedure RSdev IS LONG REAL PROCEDURE RSdev;;
+    procedure Mean IS LONG REAL PROCEDURE Mean;;
+    procedure RMean IS LONG REAL PROCEDURE RMean;;
+    procedure UpperConf IS LONG REAL PROCEDURE UpperConf(Alpha); REAL Alpha;;
+    procedure RUpperConf IS LONG REAL PROCEDURE RUpperConf(Alpha); REAL Alpha;;
+    procedure LowerConf IS LONG REAL PROCEDURE LowerConf(Alpha); REAL Alpha;;
+    procedure RLowerConf IS LONG REAL PROCEDURE RLowerConf(Alpha); REAL Alpha;;
+    procedure Resetextra IS INTEGER PROCEDURE Resetextra;;
+    begin 
+      integer Obs;  
+      long real Resetat; 
+      ref(Tab)Next; 
+      boolean Zyqnoreport; 
+
+ procedure Join(R); ref(Reportq)R;  
+ begin  
+     if R == none then Error(18, none, this Tab, 0, 
+     "T.JOIN(R); REF(TAB)T; REF(REPORTQ)R;") else
+     if R.FIRST == none 
+     then R.FIRST :- R.LAST      :- this Tab
+     else R.LAST  :- R.LAST.Next :- this Tab;
+ end***JOIN***; 
+
+ integer procedure report;  
+ begin  
+     Writetrn;  
+     Outf.OUTIMAGE; 
+ end***REPORT***;
+
+ procedure Noreport;
+ begin
+    Zyqnoreport := true;
+ end***NOREPORT***; 
+
+ INTEGER procedure Reset;
+ begin  
+     Obs     := 0;  
+     Resetat := Time;
+ end***RESET***;
+
+ procedure Writetrn;
+ begin  
+     Outf.OUTTEXT(Title);
+     Outf.SETPOS(Outf.POS+(13-Title.LENGTH));
+     Printreal(Resetat);
+     Outf.OUTINT(Obs, 7);
+ end***REPORT TITLE, RESETAT AND READINGS***;
+
+ if Title.LENGTH > 12 then Title :- Title.SUB(1, 12);
+ Reset; 
+    end***TAB***;
+
+    comment-------------------- T A L L Y -----------------------;  
+
+    Tab class Tally;
+    begin
+ long real Sum, Sumsq, Min, Max; 
+ integer Robs;  
+ long real Rsum,Rsumsq;  
+
+ ! new procedures to access mean value, standard deviation, and
+   the confidence limits of the tab;
+  
+   ! calculate the mean value of TALLY;
+   long real procedure Mean;
+   begin
+     Mean := if Obs>0 then Sum/Obs else 0;
+   end *** Mean ***;
+
+   ! calculate the standard deviation of TALLY;
+   long real procedure Sdev;  
+   begin  long real EN; EN := 1.0;
+     Sdev :=if Obs > 1 
+     then SQRT(ABS(Sumsq-Sum**2/Obs)/(Obs-EN))
+     else 0;
+   end *** SdevValue ***; 
+
+   ! calculate the upper Alpha-limit of TALLY;
+   long real procedure UpperConf(Alpha);real Alpha;
+   begin
+     UpperConf := Mean + ConfWidth(Sdev,Alpha,Obs);
+   end *** UpperConf ***;
+
+   ! calculate the lower Alpha-limit of TALLY;
+   long real procedure LowerConf(Alpha);real Alpha;
+   begin
+     LowerConf := Mean - ConfWidth(Sdev,Alpha,Obs);
+   end *** LowerConf ***;
+
+ integer procedure report;  
+ begin long real EN; EN := 1.0;
+ Writetrn;
+     if Obs = 0 then Outf.OUTTEXT(Minuses.SUB(1, 40)) else  
+     begin Printreal(Sum/Obs);  
+  if Obs = 1 then 
+  begin
+    Outf.OUTTEXT(Minuses.SUB(1, 10)); 
+    Outf.OUTTEXT(Minuses.SUB(1, 10)); 
+  end
+  else
+  begin  
+  ! 940109/peh: changed the calculation of st.dev.;
+  ! Printreal(SQRT(ABS(Obs*Sumsq-Sum**2)/(Obs*(Obs-1)))); 
+  ! 940109/peh: the long real variable EN convert the expression to long real;
+  !  Sdev := SQRT(ABS(Sumsq-Sum**2/Obs)/((Obs-EN))); 
+    Printreal(Sdev);
+    Printreal(Sdev/Sqrt(Obs));
+  end;
+  Printreal(Min);
+  Printreal(Max);
+     end;
+     Outf.OUTIMAGE; 
+ end***REPORT***;
+
+ INTEGER procedure Reset;
+ begin Obs := 0;
+     Sum     := Sumsq  := Min   := Max    := 0.0;
+     Resetat := Time;
+ end***RESET***;
+
+ INTEGER procedure Resetextra;  
+ begin  
+     Resetat:=Time; 
+ end *** RESETEXTRA ***;
+
+ procedure Update(V); long real V;
+ begin Obs := Obs + 1;  
+     Sum    := Sum + V; 
+     Sumsq  := Sumsq + V**2;
+     if Obs = 1 then Min := Max := V else
+     if V < Min then Min := V else  
+     if V > Max then Max := V;  
+ end*** UPDATE ***; 
+
+ integer procedure rreport; 
+ begin  
+     Outf.OUTTEXT(Title);
+     Outf.SETPOS(Outf.POS+(13-Title.LENGTH));
+     Printreal(Resetat);
+     Outf.OUTINT(Robs,7);
+     if Robs=0 then Outf.OUTTEXT(Minuses.SUB(1,10)) 
+     else
+     begin  
+  Printreal(RMean);
+  if Robs=1 then 
+  begin
+    Outf.OUTTEXT(Minuses.SUB(1,10));
+    Outf.OUTTEXT(Minuses.SUB(1,10));
+  end
+  else 
+  begin
+    Printreal(Sdaverage);
+    Printreal(Sdaverage/Sqrt(Robs));
+  end;
+     end;
+     Outf.OUTIMAGE; 
+ end *** RREPORT ***;
+
+ integer procedure rupdate; 
+ begin  
+     if not Zyqantithetic then  
+     begin  
+  Robs:=Robs+1; 
+  if Obs > 0 then
+  begin 
+      Rsum:=Rsum+Sum/Obs;
+      Rsumsq:=Rsumsq+(Sum/Obs)**2;  
+  end;  
+     end;
+ end *** RUPDATE ***;
+
+ ! new procedures to access mean value, standard deviation, and
+   the confidence limits after some replications of TALLY;
+  
+   ! calculate the mean value of TALLY;
+   long real procedure RMean;
+   begin
+     RMean := if RObs>0 then RSum/RObs else 0;
+   end *** RMean ***;
+
+   ! calculate the standard deviation of TALLY;
+   long real procedure RSdev;
+   begin  long real EN; EN := 1.0;
+     RSdev:=if Robs > 1 
+     then SQRT(ABS(Rsumsq-Rsum**2/Robs)/(Robs-EN))
+     else 0;
+   end *** RSdev ***; 
+
+   ! calculate the upper Alpha-limit of TALLY;
+   long real procedure RUpperConf(Alpha);real Alpha;
+   begin
+     RUpperConf := RMean + ConfWidth(RSdev,Alpha,RObs);
+   end *** RUpperConf ***;
+
+   ! calculate the lower Alpha-limit of TALLY;
+   long real procedure RLowerConf(Alpha);real Alpha;
+   begin
+     RLowerConf := RMean - ConfWidth(RSdev,Alpha,RObs);
+   end *** RLowerConf ***;
+
+ long real procedure Sdaverage;  
+ begin  
+     Sdaverage:=if Robs > 1 
+     then SQRT(ABS(Robs*Rsumsq-Rsum**2)/(Robs*(Robs-1)))
+     else 0;
+ end *** SDAVERAGE ***; 
+
+ if not(this Tally is Notally) then Join(Tallyq);
+    end*** TALLY ***;
+
+
+comment NOTALLY IS USED IN HISTOGRAM. NOTALLY OBJECTS ARE
+        NOT ENTERED INTO TALLYQ;
+
+    Tally class Notally;;
+
+    comment------------------ C O U N T -------------------------;  
+
+    Tab class Count;
+    begin
+ ! 940902/peh: new variables to produce replicate report on COUNT;
+ long real Sum, Sumsq, Min, Max; 
+ integer Robs;  
+ long real Rsum,Rsumsq;  
+
+ integer procedure report;  
+ begin  
+     Outf.SETPOS(21);
+     Writetrn;  
+     Outf.OUTIMAGE; 
+ end***REPORT***;
+
+ procedure Update(V); integer V;
+ begin  
+     Obs  := Obs + V;
+ end***UPDATE***;
+
+ INTEGER procedure Resetextra;  
+ begin  
+     Resetat := Time;
+ end *** RESETEXTRA ***;
+
+ integer procedure rreport; 
+ begin  
+     Outf.OUTTEXT(Title);
+     Outf.SETPOS(Outf.POS+(13-Title.LENGTH));
+     Printreal(Resetat);
+     Outf.OUTINT(Robs,7);
+     if Robs=0 then Outf.OUTTEXT(Minuses.SUB(1,10)) 
+     else
+     begin  
+  Printreal(Rsum/Robs); 
+  if Robs=1 then 
+  begin
+    Outf.OUTTEXT(Minuses.SUB(1,10));
+    Outf.OUTTEXT(Minuses.SUB(1,10));
+  end
+  else 
+  begin
+    Printreal(Sdaverage);
+    Printreal(Sdaverage/Sqrt(Robs));
+  end;
+     end;
+     Outf.OUTIMAGE; 
+ end *** RREPORT ***;
+
+ integer procedure rupdate; 
+ begin  
+     if not Zyqantithetic then  
+     begin  
+  Robs:=Robs+1; 
+  if Obs > 0 then
+  begin 
+      Rsum:=Rsum+Obs;
+      Rsumsq:=Rsumsq+(1.0*Obs)**2;  
+  end;  
+     end;
+ end *** RUPDATE ***;
+
+ real procedure Sdaverage;  
+ begin  long real EN; EN := 1.0;
+     Sdaverage:=if Robs > 1 
+     then SQRT(ABS(Rsumsq-Rsum**2/Robs)/(Robs-EN))
+     else 0;
+ end *** SDAVERAGE ***; 
+
+ Join(Countq);  
+    end***COUNT***; 
+
+    comment-------------------- A C C U M U L A T E -------------;  
+
+    Tab class Accumulate;
+    begin
+ long real Sumt, Sumsqt, Min, Max, Lasttime, Lastv, Prevspan;
+
+ integer procedure report;  
+ begin long real Span, Avg, SDev, T;
+     Writetrn;  
+     if Obs = 0 then Outf.OUTTEXT(Minuses.SUB(1, 40)) else  
+     begin T := Time;
+  Span := Prevspan + T - Resetat;  T := T - Lasttime;
+  if Span<Epsilon then Outf.OUTTEXT(Minuses.SUB(1,20)) else 
+  begin Avg := (Sumt+Lastv*T)/Span; 
+      Printreal(Avg);
+      SDev := SQRT(ABS((Sumsqt+Lastv**2*T)/Span-Avg**2));
+      Printreal(SDev);
+      Printreal(SDev/Sqrt(Obs));
+  end;  
+  Printreal(Min);
+  Printreal(Max);
+     end;
+     Outf.OUTIMAGE; 
+ end***REPORT***;
+
+ INTEGER procedure Reset;
+ begin Obs := 0;
+     Sumt := Sumsqt := 0.0; 
+     Min  := Max    := 0.0; 
+     Lasttime := Resetat := Time;
+ end***RESET***;
+
+ procedure Update(V); long real V;
+ begin long real Now, Span;  
+     Obs      := Obs + 1;
+     Now      := Time;  
+       Span     := Now - Lasttime;
+     Lasttime := Now;
+     Sumt     := Sumt + Lastv*Span; 
+     Sumsqt   := Sumsqt + Lastv**2*Span;
+     Lastv    := V; 
+     if Obs = 1 then Min := Max := V else
+     if V < Min then Min := V else  
+     if V > Max then Max := V;  
+ end*** UPDATE ***; 
+
+ integer procedure rupdate; 
+ begin  
+     long real T,Span; T:=Time; Span:=T-Lasttime;
+     if Zyqantithetic then  
+     begin  
+  Sumt := Sumt + Lastv *Span;
+  Sumsqt := Sumsqt + Lastv**2*Span; 
+  Lastv := 0; Prevspan := T - Resetat;  
+     end;
+ end *** RUPDATE ***;
+
+ INTEGER procedure Resetextra;  
+ begin  
+     Resetat := Lasttime := Time;
+     if not Zyqantithetic then Prevspan:=0; 
+ end *** RESETEXTRA ***;
+
+ Join(Accumq);  
+    end***ACCUMULATE***;
+
+    comment-------------------- H I S T O G R A M ---------------;  
+
+    Tab class Histogram(Lower, Upper, Ncells); long real Lower, Upper;
+    integer Ncells; 
+    begin
+
+ integer array Table(0 : Ncells + 1);
+ ref(Notally)Myt;
+ integer Limit; 
+ long real Width;
+
+ integer procedure report;  
+ begin text T;  
+     integer I, Next, A, Occ;
+     long real R, F, Scale, Sum, Freq;
+
+     integer procedure Maximumelement;  
+     begin integer K, J;
+  if Obs > 0 then
+  begin K := Table(0);  
+      for  J := 1 step 1 until Limit do 
+      if Table(J) > K then K := Table(J);
+      Maximumelement := K;  
+  end;  
+     end*** MAXIMUM ELEMENT ***;
+
+     A   := 40; 
+     Outf.SETPOS(29);
+     Outf.OUTTEXT("S U M M A R Y"); 
+     Outf.OUTIMAGE;  Outf.OUTIMAGE; 
+     Outf.OUTTEXT(Headingrtn);  
+     Outf.OUTTEXT(Tallyheading);
+     Outf.OUTIMAGE; 
+     Myt.Report;
+     Outf.OUTIMAGE; 
+     if Obs = 0 then
+     begin  
+  Outf.SETPOS(21);  
+  Outf.OUTTEXT("***NO ENTRIES RECORDED***");
+     end else
+     begin Scale  := 30 / Maximumelement;
+  Outf.OUTTEXT("CELL/LOWER LIM/    N/   FREQ/  CUM :"); 
+  Outf.OUTIMAGE;
+  Outf.SETPOS(A);  Outf.OUTCHAR('I');
+  Outf.OUTTEXT(Minuses.SUB(1, 30));  Outf.OUTIMAGE; 
+  F     := 1/Obs;
+  R     := Lower - Width;
+  for I := 0 step 1 until Limit do  
+  begin Outf.OUTINT(I, 4);  
+      if I = 0 then Outf.OUTTEXT(" -INFINITY")  
+      else Printreal(R);
+      Next := Table(I);          Outf.OUTINT(Next, 6);  
+      Freq := Next*F;            Outf.OUTFIX(Freq, 2, 8);
+      Sum  := Sum + Freq*100.0;  Outf.OUTFIX(Sum , 2, 8);
+      Outf.SETPOS(A);  Outf.OUTCHAR('I');
+      if Next > 0 then  
+      begin T :- Stars.SUB(1, Scale*Next);  
+   if T == notext then Outf.OUTCHAR('.')
+   else Outf.OUTTEXT(T);
+      end;  
+      Outf.OUTIMAGE;
+      Anymoretoprint:
+      Occ  := Occ+Next; 
+      if Occ = Obs and I+3 < Limit then 
+      begin 
+   Outf.OUTIMAGE;
+   Outf.SETPOS(A+6);
+   Outf.OUTTEXT("**REST OF TABLE EMPTY**"); 
+   Outf.OUTIMAGE;
+   Outf.OUTIMAGE;
+   goto Finish; 
+      end;  
+      R := R + Width;
+  end;  
+  Finish:
+  Outf.SETPOS(A);  Outf.OUTCHAR('I');
+  Outf.OUTTEXT(Minuses.SUB(1, 30));  Outf.OUTIMAGE; 
+     end;
+     Outf.OUTIMAGE;  Outf.OUTIMAGE; 
+ end***REPORT***;
+
+ INTEGER procedure Reset;
+ begin integer K;
+     Obs := 0;  
+     for K := 0 step 1 until Limit do
+     Table(K) := 0; 
+     Resetat := Time;
+     if Myt =/= none then Myt.Reset;
+ end***RESET***;
+
+ INTEGER procedure Resetextra;  
+ begin  
+     Resetat := Time;
+ end *** RESETEXTRA ***;
+
+ procedure Update(V); long real V;
+ begin integer Cell;
+     Obs   := Obs + 1;  
+     Myt.Update(V); 
+     V     := V - Lower;
+     if V < 0.0 then Cell := 0 else 
+     begin Cell  := ENTIER(V/Width) + 1;
+  if Cell > Limit then Cell := Limit;
+     end;
+     Table(Cell) := Table(Cell) + 1;
+ end*** UPDATE ***; 
+
+ if Upper <= Lower or Ncells < 1 then
+ begin  
+     Error(19, none, this Tab, 0, "NEW HISTOGRAM(T,L,U,N);");
+     if Ncells < 1 then Ncells := 10;
+     if Lower >= Upper then 
+     begin  
+  Lower := 0.0; 
+  Upper := 100.0;
+     end;
+ end;
+ Width := (Upper - Lower)/Ncells ;  
+ Limit := Ncells + 1;
+ Myt   :- new Notally(Title);
+ Join(Histoq);  
+    end***HISTOGRAM***; 
+
+    comment----------R E G R E S S I O N S--------------;
+
+    Tab class Regression(Title2); value Title2; text Title2;
+    begin
+ long real X, Y, Xx, Xy, Yy; 
+
+ procedure Update(Vx, Vy); long real Vx, Vy; 
+ begin  
+     Obs := Obs + 1;
+     X   := X + Vx; 
+     Y   := Y + Vy; 
+     Xx  := Vx**2 + Xx; 
+     Xy  := Vx*Vy + Xy; 
+     Yy  := Vy**2 + Yy; 
+ end***UPDATE***;
+
+ integer procedure reset;
+ begin  
+     Obs := 0;  
+     Resetat := Time;
+     X := Y := Xx := Xy := Yy := 0.0;
+ end***RESET***;
+
+ INTEGER procedure Resetextra;  
+ begin  
+     Resetat := Time;
+ end *** RESETEXTRA ***;
+
+ integer procedure report;  
+ begin  
+     long real Dx, Dy, A0, A1, Sd, R2;
+
+     Outf.SETPOS((52-Title.LENGTH-Title2.LENGTH)//2);
+     Outf.OUTTEXT("REGRESSION OF '");
+     Outf.OUTTEXT(Title2);  
+     Outf.OUTTEXT("' UPON '");  
+     Outf.OUTTEXT(Title);
+     Outf.OUTCHAR('''); 
+     Outf.OUTIMAGE;  Outf.OUTIMAGE; 
+     Outf.SETPOS(17);
+     Outf.OUTTEXT("   (RE)SET/    OBS/     XBAR/     YBAR");
+     Outf.OUTIMAGE; 
+     Outf.SETPOS(17);
+     Printreal(Resetat);
+     Outf.OUTINT(Obs, 8);
+     if Obs > 0 then
+     begin  
+  Printreal(X/Obs); 
+  Printreal(Y/Obs); 
+     end;
+     Outf.OUTIMAGE;  Outf.OUTIMAGE; 
+     if Obs <= 5 then
+     begin  
+  Outf.SETPOS(24);  
+  Outf.OUTTEXT("*** INSUFFICIENT DATA ***");
+     end else
+     begin  
+  Dx := ABS(Obs*Xx - X**2); 
+  Dy := ABS(Obs*Yy - Y**2); 
+  if Dx < 0.00001 or Dy < 0.00001 then  
+  begin 
+      Outf.SETPOS(27);  
+      Outf.OUTTEXT("***DEGENERATE DATA***");
+      Outf.OUTIMAGE;
+      if Dx < 0.00001 then  
+      begin 
+   Outf.SETPOS(25); 
+   Outf.OUTTEXT("X = CONSTANT = "); 
+   Printreal(X/Obs);
+   Outf.OUTIMAGE;
+      end;  
+      if Dy < 0.00001 then  
+      begin 
+   Outf.SETPOS(25); 
+   Outf.OUTTEXT("Y = CONSTANT = "); 
+   Printreal(Y/Obs);
+   Outf.OUTIMAGE;
+      end;  
+  end***DEGENERATE CASE***else  
+  begin 
+      A1 := (Obs*Xy - X*Y)/Dx;  
+      A0 := (Y*Xx - X*Xy)/Dx;
+      Sd := SQRT((Yy - A0*Y - A1*Xy)/(Obs-2));  
+      R2 := (Obs*Xy - X*Y)**2/(Dx*Dy);  
+      Outf.OUTTEXT("  RES.ST.DEV/ EST.REG.COEFF/ INTERCEPT/");  
+      Outf.OUTTEXT(" ST.DEV.REG.COEFF/ CORR.COEFF");
+      Outf.OUTIMAGE;
+      Outf.SETPOS( 3);  Printreal(Sd);  
+      Outf.SETPOS(18);  Printreal(A1);  
+      Outf.SETPOS(29);  Printreal(A0);  
+      Outf.SETPOS(47);  Printreal(Obs*Sd/SQRT((Obs-2)*Dx)); 
+      Outf.SETPOS(59);  Printreal(SQRT(R2));
+      Outf.OUTIMAGE;
+  end;  
+     end;
+     Outf.OUTIMAGE; 
+     Outf.OUTIMAGE; 
+ end***REPORT***;
+
+ if Title2.LENGTH > 12 then Title2 :- Title2.SUB(1, 12);
+    end***REGRESSION***;
+
+    comment----------------SEED GENERATOR-------------------;
+
+    integer procedure Zyqnextseed;  
+    begin integer K;
+ for K := 7, 13, 15, 27 do  
+ begin Zyqseed := Zyqseed*K;
+     if Zyqseed >= Zyqmodulo then
+     Zyqseed := Zyqseed - Zyqseed//Zyqmodulo*Zyqmodulo; 
+ end;
+ Zyqnextseed := Zyqseed;
+    end***ZYQNEXTSEED***;
+
+    procedure Setseed(N); integer N;
+    begin
+ if N < 0 then N := -N; 
+ if N >= Zyqmodulo then N := N-N//Zyqmodulo*Zyqmodulo;  
+ if N = 0 then N := Zyqmodulo//2;
+ Zyqseed := N;  
+    end***SETSEED***;
+
+    comment-------------D I S T R I B U T I O N S---------------;
+
+    Tab class Dist; 
+    begin integer U, Ustart, Type;  
+ boolean Antithetic;
+
+ long real procedure Zyqsample;  
+ begin integer K;
+     for K := 32, 32, 8 do  
+     begin U := K*U;
+  if U >= Zyqmodulo then U := U - U//Zyqmodulo*Zyqmodulo;
+     end;
+     Zyqsample := if Antithetic then 1.0 -  U/Zyqmodulo 
+     else U/Zyqmodulo;  
+     Obs := Obs+1;  
+ end***ZYQSAMPLE***;
+
+ procedure Setseed(N); integer N;
+ begin  
+     if N < 0 then N := -N; 
+     if N >= Zyqmodulo then N := N-N//Zyqmodulo*Zyqmodulo;  
+     if N = 0 then N := Zyqmodulo//2;
+     if this Dist in NORMAL then
+     this Dist qua NORMAL.Zyqeven := false; 
+     U := N;
+ end***SETSEED***;  
+
+ procedure Zyqfail(T1,T2,X,Y);value T1,T2;text T1,T2;real X,Y;  
+ begin  
+     switch Case:=Normall, Uniforml, Erlangl,
+     Randintl, Negexpl, Poissonl;
+     OUTTEXT("**ERROR IN CREATION OF ");
+     OUTTEXT(Disttype(Type));
+     OUTTEXT("DIST '"); 
+     OUTTEXT(Title);
+     OUTCHAR(''');  OUTCHAR('.');
+     OUTIMAGE;  
+     OUTTEXT(Zyqreason); OUTTEXT(T1); OUTIMAGE; 
+     OUTTEXT(Zyqrecvry); OUTTEXT(T2);
+     if type>=1 and then type<=6 then goto Case(Type);
+     goto Join; 
+     Normall:
+     Erlangl:
+     Negexpl:
+     Poissonl:  OUTREAL(X, 5, 12);  
+     goto Join; 
+     Uniforml:  OUTREAL(X, 5, 12);  
+     OUTTEXT(", B =");  
+     OUTREAL(Y, 5, 12); 
+     goto Join; 
+     Randintl:  OUTINT(this Dist qua RANDINT.A, 10);
+     OUTTEXT(", B =");  
+     OUTINT(this Dist qua RANDINT.B, 10);
+     Join:      OUTCHAR('.'); OUTIMAGE; OUTIMAGE;
+ end***ZYQFAIL***;  
+
+ integer procedure report;  
+ ! 960917/peh: new label included at position Type=9;
+ ! 991021/peh: new label included at position Type=10;
+ begin switch Case := Normall, Uniforml, Erlangl, Randintl, 
+     Negexpl, Poissonl, Drawl,  Constantl, Rayleighl, Paretol;  
+     Writetrn;  
+     Outf.OUTCHAR(' '); 
+     Outf.OUTTEXT(Disttype(Type));  
+     Outf.SETPOS(41);
+     ! 960917/peh: the upper limit is increased by 1,Type<=9; 
+     ! 991021/peh: the upper limit is increased by 1,Type<=10; 
+     if Type>=1 and then Type<=10 then goto Case(Type);
+     goto Skipall;  
+     Normall:    Printreal(this Dist qua NORMAL.A); 
+     Printreal(this Dist qua NORMAL.B); 
+     goto Exit; 
+     Uniforml:   Printreal(this Dist qua UNIFORM.A);
+     Printreal(this Dist qua UNIFORM.B);
+     goto Exit; 
+     Erlangl:    Printreal(this Dist qua ERLANG.A); 
+     Outf.OUTINT(this Dist qua ERLANG.B, 10);
+     goto Exit; 
+     Randintl:   Outf.OUTINT(this Dist qua RANDINT.A, 10);  
+     Outf.OUTINT(this Dist qua RANDINT.B, 10);  
+     goto Exit; 
+     Negexpl:    Printreal(this Dist qua NEGEXP.A); 
+     goto Skip; 
+     Poissonl:   Printreal(this Dist qua POISSON.A);
+     goto Skip; 
+     Drawl:      Printreal(this Dist qua DRAW.A);
+     goto Skip; 
+     Constantl:  Printreal(this Dist qua Constant.A);
+     goto Skipall; 
+     ! 960917/peh: new label describtion;
+     Rayleighl:  Printreal(this Dist qua RAYLEIGH.A); 
+     goto Skip;
+     Paretol:    Outf.OUTINT(this Dist qua Pareto.k, 10);  
+     Printreal(this Dist QUA Pareto.alpha); 
+     goto Exit; 
+     Skip:       Outf.SETPOS(61);
+     Exit:       Outf.OUTINT(Ustart, 10);
+     Skipall:    Outf.OUTIMAGE; 
+  end***REPORT***;  
+
+      integer procedure resetextra; 
+      begin 
+          if Zyqantithetic then 
+          begin 
+       Resetat := Time; 
+       U := Ustart; 
+       Antithetic := true;  
+          end
+          else  
+          begin 
+       U:=Ustart:=Zyqnextseed;  
+       Antithetic:=false;
+          end;  
+      end *** RESETEXTRA ***;
+
+      U := Ustart := Zyqnextseed;
+      if this Dist in Empirical then Join(Empq) 
+      else Join(Distq); 
+         end***DIST***; 
+
+         comment--------------------R   D I S T S-------------------;
+
+         Dist class Rdist; 
+	 virtual:
+	 PROCEDURE Sample IS long real procedure Sample;;
+	 ;
+
+         Rdist class Constant(A); long real A;
+         begin  
+      long real procedure Sample;
+      begin Obs := Obs + 1; 
+          Sample := A;  
+      end***SAMPLE***;  
+
+      Type := 8;
+         end***CONSTANT***;
+
+         Rdist class NORMAL(A, B); long real A, B;
+         begin long real Zyqu, Zyqv; boolean Zyqeven;
+
+      integer procedure reset;  
+      begin 
+          Obs     := 0; 
+          Zyqeven := false; 
+          Resetat := Time;  
+      end***RESET***;
+
+      long real procedure Sample;
+      begin long real Z; 
+          if Zyqeven then
+          begin Zyqeven := false;
+       Z    := Zyqu*COS(Zyqv);  
+       Obs  := Obs + 1; 
+          end else  
+          begin Zyqeven := true;
+       Zyqu := SQRT(-2.0*LN(Zyqsample));
+       Zyqv := 6.28318530717959*Zyqsample;  
+       Z    := Zyqu*SIN(Zyqv);  
+       Obs  := Obs - 1; 
+          end;  
+          Sample := Z*B+A;  
+      end***SAMPLE***;  
+
+      Type := 1;
+      if B < 0.0 then
+      begin B := -B;
+          Zyqfail("ST. DEV. 'B' < 0.0.",
+          "ABSOLUTE VALUE ]B] TAKEN. B IS NOW", B, 0.0);
+      end;  
+         end***NORMAL***;
+
+         Rdist class NEGEXP(A); long real A; 
+         begin  
+      long real procedure Sample;
+      begin 
+          Sample := -LN(Zyqsample)/A;
+      end***SAMPLE***;  
+
+      Type := 5;
+      if A <= 0.0 then  
+      begin A := if A < 0.0 then -A else 0.001; 
+          Zyqfail("NON-POSITIVE VALUE FOR 'A' (=ARRIVAL RATE).",
+          "A RESET TO", A, 0.0);
+      end;  
+         end***NEGEXP***;
+
+         Rdist class UNIFORM(A, B); long real A, B;  
+         begin long real Zyqspan;
+      long real procedure Sample;
+      begin 
+          Sample := Zyqspan*Zyqsample + A;  
+      end***SAMPLE***;  
+
+      Type := 2;
+      if A > B then 
+      begin long real Q; 
+          Q := A; A := B; B := Q;
+          Zyqfail("LOWER BOUND 'A' > UPPER BOUND 'B'.", 
+          "BOUNDS SWAPPED. NOW, A =", A, B);
+      end;  
+      Zyqspan := B-A;
+         end***UNIFORM***;  
+
+         Rdist class ERLANG(A, B); long real A;  integer B;  
+         begin long real Zyqab;  
+      long real procedure Sample;
+      begin integer K, M; long real Prod;
+          M := Obs; 
+          Prod := Zyqsample;
+          for K := 2 step 1 until B do  
+          Prod := Prod * Zyqsample; 
+          Obs := M+1;
+          Sample := -LN(Prod)*Zyqab;
+      end***SAMPLE***;  
+
+      Type := 3;
+      if A <= 0.0 then  
+      begin A := if A < 0.0 then -A else 0.01;  
+          Zyqfail("'A' (=1/MEAN) <= 0.0.",  
+          "A RESET TO", A, 0.0);
+      end;  
+      if B < 0 then 
+      begin B := if B < 0 then -B else 1;
+          Zyqfail("'B' (ERLANG ST. DEV.) <= 0.",
+          "B RESET TO", B, 1);  
+      end;  
+      Zyqab := A/B; 
+         end***ERLANG***;
+
+
+         comment--------P A R E T O --------;
+
+	 Rdist class Pareto(k,alpha,m); INTEGER k;long real alpha,m; 
+	 ! 991021/peh: Class for the Pareto variate;
+         !             The Pareto distribution is truncated at m if m>0;
+	 BEGIN   
+	    REAL c;
+	    long real procedure Sample;
+	    BEGIN  
+	       Sample := k/(((1-Zyqsample*c))**(1.0/alpha));
+	    END *** SAMPLE ***;  
+	    ! 991021/peh: Pareto is assigned Type=10;
+            Type := 10;
+	    IF m>0 then
+	       ! calculate truncation quantile, m=max value;
+	       c := 1-(k*1.0/m)**alpha
+	    ELSE
+	       ! not truncated, set c=1;
+	       c := 1;
+	 END *** Pareto ***;
+
+         comment--------R A Y L E I G H --------;
+
+	 Rdist class Rayleigh(A);long real A;
+	 ! 960917/peh: Class for the Rayleigh variate;
+	 begin 
+	    long real phi, sigma;
+
+	    long real procedure sample;
+	    begin Obs := Obs + 1;
+	       sample := sigma*sqrt(LN(1/Zyqsample**2));
+	    end *** sample ***;
+
+	    ! 960917/peh: Rayleigh is assigned Type=9;
+	    Type := 9;
+	    phi := arctan(1)*4;
+	    sigma := sqrt(2/phi)*A;
+	 end *** Rayleigh ***;
+
+
+         comment--------E M P I R I C A L-------;
+
+         Rdist class Empirical(Size); integer Size; 
+         begin long real array X, P(1 : Size);
+
+      long real procedure Sample;
+      begin long real Q;  integer K; 
+          Q := Zyqsample;
+          K := 2;
+          while P(K) < Q do 
+          K := K + 1;
+          Sample := X(K-1) + (X(K)-X(K-1))*(Q-P(K-1))/(P(K)-P(K-1));
+      end***SAMPLE***;  
+
+      integer procedure report; 
+      begin integer K;  
+          Outf.SETPOS(16);  
+          Outf.OUTTEXT(Headingrtn); Outf.OUTTEXT("/     SEED"); 
+          Outf.OUTIMAGE;
+          Outf.SETPOS(16);  
+          Writetrn; 
+          Outf.OUTINT(Ustart, 10);  
+          Outf.OUTIMAGE;  Outf.OUTIMAGE;
+          Outf.SETPOS(16);  
+          Outf.OUTTEXT("       K/  DIST. X(K)/  PROB. P(K)");
+          Outf.OUTIMAGE;
+          for K := 1 step 1 until Size do
+          begin 
+       Outf.SETPOS(16); 
+       Outf.OUTINT(K, 8);
+       Outf.OUTFIX(X(K), 5, 13);
+       Outf.OUTFIX(P(K), 5, 13);
+       Outf.OUTIMAGE;
+          end;  
+          Outf.OUTIMAGE;
+      end***REPORT***;  
+
+      procedure Read;
+      begin boolean Good, FIRST; integer K, L;  
+          long real A, B;
+
+          procedure Z(W, R, F, C); value W, C; text W, C;
+          long real R; boolean F;
+          begin 
+       if Good then 
+       begin Good := false; 
+           SYSOUT.SETPOS(11);
+           OUTTEXT("**READ FAULT(S) IN EMPIRICAL '");
+           OUTTEXT(Title);  
+           OUTCHAR(''');  OUTCHAR('.'); 
+           OUTIMAGE;
+       end; 
+       if FIRST then
+       begin FIRST := false;
+           OUTIMAGE;
+           OUTTEXT("**INPUTS   : K ="); OUTINT(K, 4);
+           OUTTEXT(", DIST(K) =");      OUTFIX(A, 3, 10);
+           OUTTEXT(", PROB(K) =");      OUTFIX(B, 3, 10);
+           OUTIMAGE;
+           OUTTEXT(Zyqrecvry);  
+       end; 
+       SYSOUT.SETPOS(14);
+       OUTTEXT(W);  
+       if F then OUTFIX(R, 6, 10) else OUTFIX(R, 3, 10);
+       OUTTEXT(C); OUTCHAR('.');
+       OUTIMAGE;
+          end***Z - THE WARNING ROUTINE***; 
+
+          K := 1;
+          Good := FIRST := true;
+          X(1) := A := Inf.INREAL; B := Inf.INREAL; 
+          if ABS(B) > Epsilon then  
+          Z("P(1) IS NOT ZERO. P(1) =>",0.0,true," (FIRST PROB)");  
+          for K := 2 step 1 until Size do
+          begin FIRST := true;  
+       X(K) := A := Inf.INREAL; P(K) := B := Inf.INREAL;
+       if A < X(K-1) then
+       begin X(K) := X(K-1);
+           Z("X(K) < X(K-1). X(K) =>",X(K),false," (=X(K-1))"); 
+       end; 
+       if B < 0.0 or B < P(K-1) or B > 1.0 then 
+       begin P(K) := P(K-1)+0.001;  
+           if P(K) > 1.0 then P(K) := 1.0;  
+           Z("ILLEGAL PROB. P(K) =>",P(K),true," (=P(K-1)+)");  
+       end; 
+          end;  
+          if ABS(P(Size)-1.0) > Epsilon then
+          Z("P(SIZE) NE 1.0. P(SIZE) =>", 1.0, true, " (LAST PROB.)");  
+          P(Size) := 1.0;
+          if not Good then  
+          begin OUTTEXT(Minuses.SUB(1, 62));
+       OUTIMAGE; OUTIMAGE;  
+          end;  
+      end***READ***;
+      ! 960917/peh: The empirical type is increased by 1, Type=10;
+      !             because this type must always be the last;
+      ! 991021/peh: The empirical type is increased by 1, Type=11;
+      !             because this type must always be the last;
+      Type := 11;
+      if Size = 1 then Error(20, none, this Empirical, 0,
+      "NEW EMPIRICAL(T, SIZE); TEXT T; INTEGER SIZE;"); 
+      Read; 
+         end***EMPIRICAL***;
+
+         comment--------------------I   D I S T S--------------------;  
+
+         Dist class Idist; 
+	 virtual: 
+	 PROCEDURE sample IS integer procedure Sample;;  
+	 ;
+
+         Idist class RANDINT(A, B); integer A, B;
+         begin long real Zyqspan;
+      integer procedure Sample; 
+      begin 
+          Sample := ENTIER(Zyqspan*Zyqsample) + A;  
+      end***SAMPLE***;  
+
+      Type := 4;
+      if A > B then 
+      begin integer Q;  
+          Q := A; A := B; B := Q;
+          Zyqfail("LOWER BOUND 'A' > UPPER BOUND 'B'.", 
+          "BOUNDS SWAPPED. NOW A =", A, B); 
+      end;  
+      Zyqspan := B-A+1; 
+
+        end***RANDINT***;  
+
+         Idist class POISSON(A); long real A;
+         begin  
+      integer procedure Sample; 
+      begin integer M; long real P, Q;
+          P := EXP(-A); 
+          Q := 1.0; 
+          L: Q := Q*Zyqsample;  
+          if Q >= P then
+          begin 
+       M := M + 1;  
+       goto L;  
+          end;  
+          Sample := M;  
+          Obs := Obs - M;
+      end***SAMPLE***;  
+
+      Type := 6;
+      if A <= 0.0 then  
+      begin A := if A < 0.0 then -A else 0.001; 
+          Zyqfail("NON-POSITIVE VALUE FOR 'A' (=MEAN).",
+          "A RESET TO", A, 0.0);
+      end;  
+         end***POISSON***;  
+
+         comment--------------------B   D I S T S--------------------;  
+
+         Dist class Bdist; 
+	 virtual: 
+	 PROCEDURE sample IS boolean procedure Sample;;  
+	 ;
+
+         Bdist class DRAW(A); long real A;
+         begin  
+      boolean procedure Sample; 
+      begin 
+          Sample := A > Zyqsample;  
+      end***SAMPLE***;  
+
+      Type := 7;
+         end***DRAW***; 
+
+         comment-------------R E A D D I S T--------------------;
+
+         procedure Readdist(D, Title); name D; value Title; 
+         ref(Dist)D; text Title;
+         begin text F, Rest;
+      integer P, Imlength1, L, K, T;
+
+      procedure Fail(D, Eof); boolean D, Eof;
+      begin OUTTEXT("**ERROR IN READING DIST WITH TITLE = '");  
+          OUTTEXT(Title);
+          OUTCHAR(''');  OUTCHAR('.');  
+          OUTIMAGE; 
+          OUTTEXT("**NO MATCH FOUND WHEN SCANNING INPUT FILE FOR ");
+          if D then OUTTEXT(" DIST TYPE") else OUTTEXT("TITLE");
+          OUTCHAR('.'); 
+          OUTIMAGE; 
+          OUTTEXT(Zyqreason);
+          if Eof then OUTTEXT("END OF INPUT FILE MARKER HIT.") else 
+          begin OUTTEXT("REST OF CURRENT INPUT IMAGE READS:");  
+       OUTIMAGE;
+       OUTTEXT(Rest);
+          end;  
+          Abort(true);  
+      end***FAIL***;
+
+      comment***CHECKTITLE***;  
+      Imlength1 := Inf.IMAGE.LENGTH + 1;
+      if Inf.LASTITEM then Fail(false, true);
+      L := Title.LENGTH;
+      P := Inf.IMAGE.POS;
+      Rest :- Inf.IMAGE.SUB(P, Imlength1 - P);  
+      Rest :- Upcase(Rest); 
+      if Rest.LENGTH >= L then F :- Rest.SUB(1, L); 
+      if F ne Upcase(Title) then Fail(false,false); 
+      Inf.SETPOS(P + L);
+
+      comment***GET DIST TYPE***;
+      if Inf.LASTITEM then Fail(true, true);
+      P    := Inf.IMAGE.POS;
+      Rest :- Inf.IMAGE.SUB(P, Imlength1 - P);  
+      Rest :- Upcase(Rest); 
+      L    := Rest.LENGTH;  
+      ! 960917/peh: the length of the Rayleigh string (=8);
+      !             is included at position 9 (Type=9) of the loop;
+      ! 991021/peh: the length of the Pareto string (=7);
+      !             is included at position 10 (Type=10) of the loop;
+      for K := 6, 7, 6, 7, 6, 7, 4, 8, 8, 7, 9 do 
+      begin T := T + 1; 
+          if K <= L then
+          begin 
+       if Disttype(T) = Rest.SUB(1, K) then goto Found; 
+          end;  
+      end;  
+      Fail(true, false);
+
+      Found:
+      Inf.SETPOS(P + K);
+
+      if T=1 then D:-new NORMAL(Title,Inf.INREAL,Inf.INREAL) else
+      if T=2 then D:-new UNIFORM(Title,Inf.INREAL,Inf.INREAL)else
+      if T=3 then D:-new ERLANG(Title,Inf.INREAL,Inf.ININT)  else
+      if T=4 then D:-new RANDINT(Title,Inf.ININT,Inf.ININT)  else
+      if T=5 then D:-new NEGEXP(Title,Inf.INREAL)            else
+      if T=6 then D:-new POISSON(Title,Inf.INREAL)           else
+      if T=7 then D:-new DRAW(Title,Inf.INREAL)              else
+      if T=8 then D:-new Constant(Title,Inf.INREAL)          else
+      ! 960917/peh: if distribution are read from file/stdio ;
+      if T=9 then D:-new RAYLEIGH(Title, Inf.INREAL)         else
+      ! 991021/peh: if distribution are read from file/stdio ;
+      if T=10 then 
+	 D:-new Pareto(Title, Inf.InInt,Inf.InReal, Inf.InReal)         
+      else
+      if T=11 then D:-new Empirical(Title, Inf.ININT);
+         end***READDIST***; 
+
+         text procedure Upcase(T);  
+         text T;
+         if T =/= notext then
+         begin  
+      character C; integer Shift;
+      Shift := RANK('a') - RANK('A');
+      T.SETPOS(1);  
+      while T.MORE do
+      begin 
+          C := T.GETCHAR;
+          if LETTER(C) and C >= 'a' and C <= 'z' then
+          begin 
+       C := CHAR(RANK(C) - Shift);  
+       T.SETPOS(T.POS - 1); T.PUTCHAR(C);
+          end;  
+      end;  
+      T.SETPOS(1);  
+      Upcase :- T;  
+         end *** UPCASE ***;
+
+         comment------------ REPORTQ ---------------;
+
+         class Reportq(H, L1, L2, L3); value H; text H, L1, L2, L3; 
+         begin  
+      ref(Tab)FIRST, LAST;  
+
+      integer procedure report; 
+      begin ref(Tab)T;  
+          integer P, L; 
+          L := H.LENGTH;   P := (72-L)//2;  
+          Outf.SETPOS(P);  Outf.OUTTEXT(H); 
+          Outf.OUTIMAGE;
+          Outf.SETPOS(P);  Outf.OUTTEXT(Stars.SUB(1, L));
+          Outf.OUTIMAGE;   Outf.OUTIMAGE;
+          if L1 =/= notext then 
+          begin 
+       Outf.OUTTEXT(L1);
+       if L2 =/= notext then Outf.OUTTEXT(L2);  
+       Outf.OUTIMAGE;
+          end;  
+          T :- FIRST;
+          while T =/= none do
+          begin 
+       if not T.Zyqnoreport then T.Report;
+       T :- T.Next; 
+          end;  
+      end***REPORT***;  
+
+      integer procedure reset;  
+      begin ref(Tab)T;  
+          T :- FIRST;
+          while T =/= none do
+          begin T.Reset;
+       T :- T.Next; 
+          end;  
+      end***RESET***;
+
+      integer procedure resetextra; 
+      begin ref(Tab)T;  
+          T:-FIRST; 
+          while T=/=none do 
+          begin T.Resetextra;
+       T:-T.Next;
+          end;  
+      end ***RESETEXTRA***; 
+
+      procedure Repli;  
+      begin 
+          ref(Tab)T;
+          integer P,L;  
+          L:=H.LENGTH; P:=(72-L)//2;
+          Outf.SETPOS(P); Outf.OUTTEXT(H);  
+          Outf.OUTIMAGE;
+          Outf.SETPOS(P); Outf.OUTTEXT(Stars.SUB(1,L)); 
+          Outf.OUTIMAGE; Outf.OUTIMAGE; 
+          if L1 =/= notext then 
+          begin 
+       Outf.OUTTEXT(L1);
+       if L3 =/= notext then Outf.OUTTEXT(L3);  
+       Outf.OUTIMAGE;
+          end;  
+          T:-FIRST; 
+          while T =/= none do
+          begin T.Rreport;  
+       T:-T.Next;
+          end;  
+      end *** RREPORT ***;  
+
+      integer procedure rupdate;
+      begin 
+          ref(Tab)T;
+          T:-FIRST; 
+          while T =/= none do
+          begin T.Rupdate;  
+       T:-T.Next;
+          end;  
+      end ***RUPDATE ***;
+
+         end***REPORTQ***;  
+
+         comment--------------- REPORTING AIDS -----------------;
+
+         procedure Clocktime;
+         begin Outf.SETPOS(24); 
+      Outf.OUTTEXT("CLOCK TIME = ");
+      Printreal(Time);  
+      Outf.OUTIMAGE;
+         end***CLOCK TIME***;
+
+
+         procedure Box(T); value T; text T; 
+         begin  
+      Outf.OUTTEXT(Stars);  Outf.OUTIMAGE;  
+      Outf.OUTCHAR('*');    Outf.SETPOS(70);
+      Outf.OUTCHAR('*');    Outf.OUTIMAGE;  
+      Outf.OUTCHAR('*');
+      Outf.SETPOS((72 - T.LENGTH)//2);  
+      Outf.OUTTEXT(T);  
+      Outf.SETPOS(70);  
+      Outf.OUTCHAR('*');
+      Outf.OUTIMAGE;
+      Outf.OUTCHAR('*');    Outf.SETPOS(70);
+      Outf.OUTCHAR('*');    Outf.OUTIMAGE;  
+      Outf.OUTTEXT(Stars);  Outf.OUTIMAGE;  
+      Outf.OUTIMAGE;
+         end***BOX***;  
+
+
+         text procedure Edit(T, K); value T; text T; integer K; 
+         begin text S;  
+      T :- T.STRIP; 
+      if T.LENGTH > 10 then T :- T.SUB(1, 10);  
+      Edit :- S :- BLANKS(T.LENGTH + 2);
+      S := T;
+      if K < 0 then K := -K;
+      if K > 99 then K := K - K//100*100;
+      S.SUB(S.LENGTH-1, 2).PUTINT(K);
+         end***EDIT***; 
+
+
+         procedure Printreal(X); long real X;
+         begin  
+      if X > 0.0 then
+      begin 
+          if X > 99999.999 or X < 0.1 then Outf.OUTREAL(X, 4, 10)
+          else Outf.OUTFIX (X, 3, 10);  
+      end else  
+      if X = 0.0 then Outf.OUTFIX(X, 3, 10) else
+      begin 
+          if X < -9999.999 or X > -0.1 then Outf.OUTREAL(X, 3, 10)  
+          else Outf.OUTFIX (X, 3, 10);  
+      end;  
+         end***PRINTREAL***;
+
+         comment----------E N T I T Y-------------------------; 
+
+         class Entity(Title); value Title; text Title;  
+         virtual: label Loop;
+         begin long real Timein, Evtime; 
+      integer Priority, Cycle, Wants, Interrupted;  
+      ref(Queue)Currentq;
+      ref(Entity)Owner; 
+      boolean Terminated;
+      ref(Entity)Ll, Bl, Rl;
+      ref(Entity)SUC, PRED; 
+
+      boolean procedure Avail;  
+      Avail := Owner == none;
+
+      boolean procedure Idle;
+      Idle := Evtime < 0.0; 
+
+      procedure Coopt;  
+      begin 
+          if Owner =/= none then Error(1, this Entity, none, 0, 
+          "E.COOPT; REF(ENTITY)E;");
+          Owner :- Current; 
+          if Zyqtrace > 0 then  
+          Note(1,"COOPTS",this Entity,Currentq,0.0,0);  
+          if Currentq =/= none then OUT;
+      end***COOPT***;
+
+      procedure Interrupt(N); integer N;
+      begin 
+          Interrupted := N; 
+          if Zyqtrace > 0 then  
+          Note(24,"INTERRUPTS",this Entity,none,0.0,N); 
+          if Current =/= this Entity then
+          begin 
+       if Currentq =/= none then OUT;
+       if Evtime >= 0.0 then Cancel;
+       Insertdelay0;
+          end;  
+      end***INTERRUPT***;
+
+      procedure Repeat; 
+      begin Cycle := Cycle+1;
+          goto Loop;
+      end***REPEAT***;  
+
+      procedure INTO(Q); ref(Queue)Q;
+      begin ref(Entity)E;
+          if Currentq =/= none then 
+          begin 
+       Error(3, this Entity, Currentq, 0,
+       "E.INTO(Q); REF(QUEUE)Q;");  
+       OUT; 
+          end;  
+          Currentq :- Q;
+          Timein   := Time; 
+          inspect Currentq do
+          begin Qint  := Qint + (Timein-Lastqtime)*LENGTH;  
+       Lastqtime := Timein; 
+       LENGTH    := LENGTH+1;
+       if LENGTH > Maxlength then Maxlength := LENGTH;  
+       E :- LAST;
+       if E == none then FIRST :- LAST :- this Entity else  
+       if E.Priority >= Priority then
+       begin
+           PRED :- LAST;
+           LAST :- LAST.SUC :- this Entity; 
+       end else 
+       begin
+           E :- FIRST;  
+           while E.Priority >= Priority do  
+           E :- E.SUC;  
+           SUC :- E;
+           PRED :- E.PRED;  
+           if PRED == none then FIRST    :- this Entity 
+           else PRED.SUC :- this Entity;
+           SUC.PRED :- this Entity; 
+       end; 
+          end otherwise Error(2, this Entity, none, 0,  
+          "E.INTO(Q); REF(QUEUE)Q;");
+      end***INTO***;
+
+      procedure OUT;
+      begin long real T; 
+          T := Time;
+          inspect Currentq do
+          begin Qint  := Qint + (T-Lastqtime)*LENGTH;
+       LENGTH    := LENGTH-1;
+       Lastqtime := T;  
+       Obs       := Obs+1;  
+       T         := Lastqtime-Timein;
+       if T < Epsilon then Zeros := Zeros+1;
+       Cum := Cum+T;
+       if SUC == none then LAST :- PRED else SUC.PRED :- PRED;  
+       if PRED == none then FIRST :- SUC else PRED.SUC :- SUC;  
+       SUC :- PRED :- none; 
+          end;  
+          Currentq :- none; 
+      end***OUT***; 
+
+      procedure Getserialno;
+      begin ref(Zyqenttitle)Z;  
+          Z :- Zyqentnames; 
+          while (if Z == none then false else Title ne Z.T) do  
+          Z :- Z.Nexttitle; 
+          if Z == none then Z :- new Zyqenttitle(Title);
+          Title :- BLANKS(Z.L+2);
+          Title := Z.T; 
+          Title.SUB(Z.L+1, 2).PUTINT(Z.N);  
+          Z.N := Z.N+1; 
+          if Z.N = 100 then Z.N := 0;
+      end***GET SERIALNO***;
+
+      ref(Entity)procedure Nextev;  
+      begin 
+          ref(Entity)P; 
+          if Bl =/= none then
+          begin 
+       P :- Bl.Rl;  
+       if P == none then Nextev :- Bl else  
+       begin
+           while P.Ll =/= none do
+           P :- P.Ll;
+           Nextev :- P; 
+       end; 
+          end;  
+      end***NEXTEV***;  
+
+      procedure List;
+      begin 
+          ref(Entity)R; 
+          integer N;
+          Outf.SETPOS(6);
+          Printreal(Evtime);
+          Outf.OUTCHAR(' ');
+          Outf.OUTTEXT(Title);  
+          N := 30;  
+          for R :- Ll, Bl, Rl do
+          begin 
+       Outf.SETPOS(N);  
+       if R =/= none then Outf.OUTTEXT(R.Title);
+       N := N + 13; 
+          end;  
+          Outf.OUTIMAGE;
+      end***LIST***;
+
+      procedure Insert; 
+      begin 
+          ref(Entity)W, X;  
+
+          Newroot:  
+          if Evtime >= Root.Evtime then 
+          begin 
+       Ll   :- Root;
+       Root :- Root.Bl :- this Entity;  
+          end else  
+
+          Insertbeloww: 
+          begin 
+       W :- Root;
+       Descend: 
+       X :- W.Ll;
+       if X == none then
+       begin
+           Insertasllofw:
+           W.Ll :- this Entity; 
+           Bl   :- W;
+           if W == Current then 
+           begin
+        Error(15, this Entity, none, 0, 
+        "E.INSERT; REF(ENTITY)E;"); 
+        Current :- this Entity; 
+        RESUME(Current);
+           end; 
+       end else 
+       if Evtime < X.Evtime then
+       Insert1belowx:
+       begin
+           W :- X;  
+           goto Descend;
+       end else 
+       if Evtime = X.Evtime then
+       Insertbetweenxandw:  
+       begin
+           W.Ll :- X.Bl :- this Entity; 
+           Bl   :- W;
+           Ll   :- X;
+       end else 
+       Insertinrightsubtreeofw: 
+       begin
+           X :- W.Rl;
+           if X == none then
+           Insertasnewrlofw:
+           begin
+        W.Rl :- this Entity;
+        Bl   :- W;  
+           end else 
+           Insert2belowx:
+           if Evtime < X.Evtime then
+           begin
+        W :- X; 
+        goto Descend;
+           end else 
+           Insert3betweenwandx: 
+           begin
+        W.Rl :- X.Bl :- this Entity;
+        Bl   :- W;  
+        Ll   :- X;  
+           end; 
+       end; 
+          end;  
+      end***INSERT***;  
+
+      procedure Insertaft; 
+      begin 
+          if Evtime < 0.0 then  
+          begin 
+       Ll :- Current;
+       Evtime := Current.Evtime;
+       if Current==Root then Current.Bl:-Root:-this Entity else 
+       begin
+           Bl :- Current.Bl;
+           Current.Bl :- Bl.Ll :- this Entity;  
+       end; 
+          end;  
+      end***INSERTAFTERCURRENT***;  
+
+      procedure Insertdelay0;
+      begin 
+          ref(Entity)P; 
+          if Evtime < 0.0 then  
+          begin 
+       Evtime := Current.Evtime;
+       if Evtime >= Root.Evtime then
+       begin
+           Ll :- Root;  
+           Root :- Root.Bl :- this Entity;  
+       end else 
+       begin
+           P :- Current.Bl; 
+           while Evtime >= P.Evtime do  
+           P :- P.Bl;
+           Ll :- P.Ll;  
+           Bl :- P; 
+           Ll.Bl :- Bl.Ll :- this Entity;
+       end; 
+          end;  
+      end***INSERTDELAY0***;
+
+      procedure Schedule(T); long real T;
+      begin 
+          ref(Entity)E; 
+
+          if Terminated then Error(14, this Entity, none, 0,
+          "E.SCHEDULE(T); REF(ENTITY)T; LONG REAL T;");  
+          if Evtime < 0.0 then  
+          begin 
+       if Zyqtrace > 0 then 
+       Note(2,"SCHEDULES",this Entity, none,T,0);
+       Owner :- none;
+       if Currentq =/= none then OUT;
+       Preemptcurrent:  
+       if T <= Now then 
+       begin
+           Evtime     := Current.Evtime;
+           Bl         :- Current;
+           Current    :- Current.Ll :- this Entity; 
+           RESUME(Current); 
+       end else 
+       Insertbehindcurrent: 
+       if T <= 0.0 then Insertdelay0 else
+       Insertfromthetop:
+       begin
+           Evtime := Current.Evtime + T;
+           Insert;  
+       end; 
+          end else Error(16, this Entity, none, 0,  
+          "E.SCHEDULE(T); REF(ENTITY)E; LONG REAL T;");  
+      end***SCHEDULE***;
+
+      procedure Cancel; 
+      begin 
+          ref(Entity)P; 
+          if Evtime >= 0.0 then 
+          begin 
+       if Zyqtrace > 0 and not Terminated then  
+       Note(23,"CANCELS",this Entity,none,0.0,0);
+       Evtime := -1.0;  
+       if Ll == none then
+       begin
+           if this Entity == Root then  
+           Error(13,this Entity,none,0,"E.CANCEL; REF(ENTITY)E;");  
+           if this Entity == Current then
+           begin
+        if Bl.Rl == none then
+        Blisnewcurrent: 
+        begin
+            Current :- Bl;  
+            Current.Ll :- none; 
+        end else
+        Leftmostofsubtreeofblisnewcurrent:  
+        begin
+            P :- Bl.Rl; 
+            while P.Ll =/= none do  
+            P :- P.Ll;  
+            Swingrsubtreetotheleft: 
+            Bl.Ll :- Bl.Rl; 
+            Bl.Rl :- none;  
+            Current :- P;
+        end;
+        Bl:- none;  
+        RESUME(Current);
+           end else 
+           Leafbutnotcurrent:
+           begin
+        if Bl.Ll == this Entity then Bl.Ll :- Bl.Rl;
+        Bl.Rl :- none;  
+        Bl    :- none;  
+           end; 
+       end else 
+       if Rl == none then comment BUT LL =/= NONE;  
+       begin
+           if this Entity == Root  then Root :- Ll else 
+           if this Entity == Bl.Ll then Bl.Ll :- Ll 
+           else Bl.Rl :- Ll;
+           Ll.Bl :- Bl; 
+           Bl :- Ll :- none;
+       end else 
+       begin comment NEITHER LL NOR RL == NONE; 
+           P :- Rl; 
+           P.Bl :- Bl;  
+           if this Entity == Root then Root :- P else
+           begin
+        if Bl.Ll == this Entity then Bl.Ll :- Rl
+        else Bl.Rl :- Rl;
+        Bl :- none; 
+           end; 
+           while P.Ll =/= none do
+           P :- P.Ll;
+           P.Ll :- Ll;  
+           Ll.Bl :- P;  
+           Rl :- Ll :- none;
+       end; 
+          end else Error(17, this Entity, none, 0,  
+          "E.CANCEL; REF(ENTITY)E;");
+      end***CANCEL***;  
+
+      if Title.LENGTH > 10 then Title :- Title.SUB(1, 10);  
+      Getserialno;  
+      Evtime := -1.0;
+      DETACH;
+      comment removed by Henning Normann, IDB 14.9.86 to satisfy
+          the compiler - Loop:; 
+      inner;
+      Terminated := true;
+      if Zyqtrace>0 then Note(3,"***TERMINATES",none,none,0.0,0);
+      if Evtime >= 0.0 then Zyqpassivate;
+         end***ENTITY***;
+
+         comment---------T I M E  AND  P A S S I V A T E--------;
+
+         long real procedure Time;
+         Time := Current.Evtime;
+
+
+         procedure Zyqpassivate;
+         begin  
+      ref(Entity)P; 
+      if Current == Root then Error(13, Current, none, 0,
+      "PASSIVATE;");
+      P :- Current.Bl;  
+      Current.Bl :- none;
+      Current.Evtime := -1.0;
+      Locatenewcurrent: 
+      if P.Rl =/= none then 
+      begin 
+          P.Ll :- P.Rl; 
+          P.Rl :- none; 
+          while P.Ll =/= none do
+          P :- P.Ll;
+      end else P.Ll :- none;
+      Current :- P; 
+      RESUME(Current);  
+         end***ZYQPASSIVATE***; 
+
+
+         procedure Passivate;
+         begin  
+      if Zyqtrace>0 then Note(22,"PASSIVATES",none,none,0.0,0); 
+
+      Zyqpassivate; 
+         end***PASSIVATE***;
+
+         comment-------------H O L D--------------; 
+
+         procedure Hold(T); long real T; 
+         begin  
+      ref(Entity)P; 
+
+      if T < 0.0 then T := 0.0; 
+      if Zyqtrace>0 then Note(21,"HOLDS FOR",none,none,T,0);
+      inspect Current do
+      begin 
+          Evtime := Evtime+T;
+          if Root =/= Current then  
+          Moreworktodo: 
+          begin 
+       Locatenextev:
+       if Bl.Rl == none then P :- Bl else
+       begin
+           P :- Bl.Rl;  
+           while P.Ll =/= none do
+           P :- P.Ll;
+       end; 
+       Skipifstillcurrent:  
+       if Evtime >= P.Evtime then
+       begin
+           Bl.Ll :- Bl.Rl;  
+           Bl.Rl :- none;
+           Bl :- none;  
+           Current :- P;
+           Insert;  
+           RESUME(Current); 
+       end; 
+          end;  
+      end;  
+         end***HOLD***; 
+
+         comment----------- Q U E U E ------------------;
+
+         Tab class Queue;
+         begin  
+      integer LENGTH, Zeros, Maxlength; 
+      long real Qint, Cum, Lastqtime;
+      ref(Entity)FIRST, LAST;
+      integer Robs; 
+      long real Prevspan,Rsint,Rsintsq,Rqint,Rqintsq,Rcum,Rcumsq;
+
+      procedure List;
+      begin 
+          ref(Entity)E; 
+          integer L, K; 
+          L := Title.LENGTH;
+          Outf.SETPOS((52 - L)//2); 
+          Outf.OUTTEXT("ENTITIES WAITING IN "); 
+          Outf.OUTTEXT(Title);  
+          Outf.OUTIMAGE;
+          Outf.SETPOS((52 - L)//2); 
+          Outf.OUTTEXT(Stars.SUB(1, 20+L)); 
+          Outf.OUTIMAGE; Outf.OUTIMAGE; 
+          Outf.SETPOS(19);  
+          if LENGTH = 0 then
+          begin 
+       Outf.OUTTEXT("  **** THE QUEUE IS EMPTY. ****"); 
+       Outf.OUTIMAGE;
+          end else  
+          begin 
+       Outf.OUTTEXT("NO OBJECT     PRIORITY ENTRY IN Q");
+       Outf.OUTIMAGE;  Outf.OUTIMAGE;
+       K := 0;  
+       E :- FIRST;  
+       while E =/= none do  
+       begin
+           Outf.SETPOS(17); 
+           K := K+1;
+           Outf.OUTINT(K, 4);
+           Outf.SETPOS(22); 
+           Outf.OUTTEXT(E.Title);
+           Outf.SETPOS(33); 
+           Outf.OUTINT(E.Priority, 8);  
+           Outf.SETPOS(42); 
+           Printreal(E.Timein); 
+           Outf.OUTIMAGE;
+           E :- E.SUC;  
+       end; 
+          end;  
+          Outf.OUTIMAGE;
+          Outf.OUTIMAGE;
+      end***LIST***;
+
+      integer procedure report; 
+      begin 
+          long real Span, T; 
+          Writetrn; 
+          if (if this Queue in Condq
+          then this Queue qua Condq.All 
+          else this Queue in Waitq) 
+          then Outf.IMAGE.SUB(13,1).PUTCHAR('*');
+          Outf.OUTINT(Maxlength, 6);
+          Outf.OUTINT(LENGTH, 6);
+          T    := Time; 
+          Span := Prevspan + T - Resetat;
+          Outf.SETPOS(44);  
+          if Span<Epsilon then Outf.OUTTEXT(Minuses.SUB(1,10)) else 
+          Printreal((Qint + (T-Lastqtime)*LENGTH)/Span);
+          Outf.OUTINT(Zeros, 6);
+          Outf.SETPOS(61);  
+          if Obs > 0 then Printreal(Cum/Obs)
+          else Outf.OUTTEXT(Minuses.SUB(1,10)); 
+          Outf.OUTIMAGE;
+          if this Queue is Waitq then Outf.OUTIMAGE;
+      end***REPORT***;  
+
+      integer procedure reset;  
+      begin 
+          Zeros     := Obs  := 0;
+          Qint      := Cum  := 0.0; 
+          Maxlength := LENGTH;  
+          Lastqtime := Resetat:= Time;  
+      end***RESET***;
+
+      integer procedure resetextra; 
+      begin 
+          FIRST:-LAST:-none;
+          LENGTH:=0;
+          if Zyqantithetic  
+          then Resetat:=Lastqtime:=Time 
+          else begin Prevspan:=0; Maxlength:=0; end;
+      end *** RESETEXTRA ***;
+
+      integer procedure rupdate;
+      begin 
+          long real T,X,Span;
+          T:=Time;  
+          if Zyqantithetic then 
+          begin 
+       Qint := Qint + (T-Lastqtime) * LENGTH;
+       Prevspan := T - Resetat; 
+          end
+          else  
+          begin 
+       Span:=Prevspan+T-Resetat;
+       if Span = 0  
+       then X:=0
+       else X:=(Qint+(T-Lastqtime)*LENGTH)/Span;
+       Robs:=Robs+1;
+       Rqint:=Rqint+X;  
+       Rqintsq:=Rqintsq+X**2;
+       if Obs>0 then
+       begin
+           Rcum:=Rcum+Cum/Obs;  
+           Rcumsq:=Rcumsq+(Cum/Obs)**2; 
+       end; 
+          end;  
+      end *** RUPDATE ***;  
+
+      integer procedure rreport;
+      begin 
+          Outf.OUTTEXT(Title);  
+          Outf.SETPOS(Outf.POS+(13-Title.LENGTH));  
+          Printreal(Resetat);
+          Outf.OUTINT(Robs,7);  
+          if (if this Queue in Condq
+          then this Queue qua Condq.All 
+          else this Queue in Waitq) 
+          then Outf.IMAGE.SUB(13,1).PUTCHAR('*');
+          if Robs=0 
+          then Outf.OUTTEXT(Minuses.SUB(1,10))  
+          else  
+          begin Printreal(Rqint/Robs);  
+       if Robs=1 then Outf.OUTTEXT(Minuses.SUB(1,10))
+       else Printreal(SQRT(ABS(Robs*Rqintsq-Rqint**2)/(Robs*(Robs-1))));
+          end;  
+          if Robs=0 
+          then Outf.OUTTEXT(Minuses.SUB(1,10))  
+          else  
+          begin Printreal(Rcum/Robs);
+       if Robs=1 then Outf.OUTTEXT(Minuses.SUB(1,10))
+       else Printreal(Sdwaitingtime);
+          end;  
+          Outf.OUTIMAGE;
+          if this Queue is Waitq then Outf.OUTIMAGE;
+      end *** RREPORT ***;  
+
+      long real procedure Sdwaitingtime; 
+      begin 
+          Sdwaitingtime:=if Robs>1  
+          then SQRT(ABS(Robs*Rcumsq-Rcum**2)/(Robs*(Robs-1)))
+          else 0;
+      end *** SDWAITINGTIME ***;
+
+      if this Queue is Queue then Join(Queueq); 
+         end***QUEUE***;
+
+
+         Queue class Noqueue;;  
+
+         comment------------R E S O U R C E-------------;
+
+         Queue class Resource(Avail); integer Avail;
+         begin  
+      integer Extreme, Initial, Users;  
+      long real Sint, Lastrtime; 
+
+      integer procedure report; 
+      begin long real T, Span, X;
+          T    := Time; 
+          Span := Prevspan + T- Resetat;
+          Writetrn; 
+          Fudge: Outf.IMAGE.SUB(24, 7).PUTINT(Users);
+          Outf.OUTINT(Initial, 5);  
+          Outf.OUTINT(Extreme, 5);  
+          Outf.OUTINT(Avail, 5);
+          X := Sint + (T-Lastrtime)*Avail;  
+          if Span < Epsilon then Outf.OUTTEXT(Minuses.SUB(1, 10)) else  
+          if this Resource in Bin then Printreal(X/Span) else
+          Printreal((1.0-X/(Initial*Span))*100.0);  
+          if Obs = 0 then Outf.OUTTEXT(Minuses.SUB(1,10))
+          else Printreal(Cum/Obs);  
+          Outf.OUTINT(Maxlength,5); 
+          Outf.OUTIMAGE;
+      end***REPORT***;  
+
+      integer procedure reset;  
+      begin 
+          Obs := Zeros := Users := 0;
+          Maxlength := LENGTH;  
+          Lastrtime := Lastqtime := Resetat := Time;
+          Qint := Sint := Cum := 0.0;
+          Extreme  := Avail;
+      end***RESET***;
+
+      integer procedure resetextra; 
+      begin 
+          Extreme:=Avail:=Initial;  
+          FIRST:-LAST:-none;
+          LENGTH:=0;
+          if Zyqantithetic  
+          then Resetat:=Lastrtime:=Lastqtime:=Time  
+          else begin Prevspan:=0; Maxlength:=0; end;
+      end *** RESETEXTRA ***;
+
+      integer procedure rupdate;
+      begin 
+          long real T,X,Span;
+          T:=Time;  
+          if Zyqantithetic then 
+          begin 
+       Sint:=Sint+(T-Lastrtime)*Avail;  
+       Prevspan:=T-Resetat; 
+          end
+          else  
+          begin 
+       Span:=Prevspan+T-Resetat;
+       if Span=0
+       then begin if this Resource is Bin then X:=0 else X:=100 end 
+       else 
+       begin
+           X:=Sint+(T-Lastrtime)*Avail; 
+           if this Resource is Bin  
+           then X:= X/Span  
+           else X:= (1.0 - X/(Initial*Span))*100.0; 
+       end; 
+       Robs:=Robs+1;
+       Rsint:=Rsint+X;  
+       Rsintsq:=Rsintsq+X**2;
+       if Obs > 0 then  
+       begin
+           Rcum:=Rcum+Cum/Obs;  
+           Rcumsq:=Rcumsq+(Cum/Obs)**2; 
+       end; 
+          end;  
+      end *** RUPDATE ***;  
+
+      integer procedure rreport;
+      begin 
+          Outf.OUTTEXT(Title);  
+          Outf.SETPOS(Outf.POS+(13-Title.LENGTH));  
+          Printreal(Resetat);
+          Outf.OUTINT(Robs,7);  
+          if Robs=0 then Outf.OUTTEXT(Minuses.SUB(1,10))
+          else  
+          begin Printreal(Rsint/Robs);  
+       if Robs=1 then Outf.OUTTEXT(Minuses.SUB(1,10))
+       else Printreal(Sdoccupation);
+          end;  
+          if Robs=0 then Outf.OUTTEXT(Minuses.SUB(1,10))
+          else  
+          begin Printreal(Rcum/Robs);
+       if Robs=1 then Outf.OUTTEXT(Minuses.SUB(1,10))
+       else Printreal(Sdwaitingtime);
+          end;  
+          Outf.OUTIMAGE;
+      end *** RREPORT ***;  
+
+      long real procedure Sdoccupation;  
+      begin 
+          Sdoccupation:=if Robs>1
+          then SQRT(ABS(Robs*Rsintsq-Rsint**2)/(Robs*(Robs-1))) 
+          else 0;
+      end *** SDOCCUPATION ***; 
+
+      long real procedure Sdwaitingtime; 
+      begin 
+          Sdwaitingtime:=if Robs>1  
+          then SQRT(ABS(Robs*Rcumsq-Rcum**2)/(Robs*(Robs-1)))
+          else 0;
+      end *** SDWAITINGTIME ***;
+
+      Initial := Avail; 
+         end***RESOURCE***; 
+
+         comment------------R E S-----------------------;
+
+         Resource class Res;
+         begin  
+      procedure Acquire(M); integer M;  
+      begin 
+          long real T;
+          if M < 1 or M > Initial then  
+          Error(if M < 1 then 4 else 5, none, this Res, M,  
+          "R.AQUIRE(N); REF(RES)R; INTEGER N;");
+          Current.INTO(this Queue); 
+          Current.Wants := M;
+          if M > Avail or Current =/= FIRST then
+          begin 
+       if Zyqtrace>0 then Note(4,"AWAITS",none,this Res,0.0,M); 
+       Zyqpassivate;
+       while M > Avail or Current =/= FIRST do  
+       Zyqpassivate;
+          end;  
+          if Zyqtrace>0 then Note(5,"SEIZES",none,this Res,0.0,M);  
+          T     := Time;
+          Sint  := Sint + (T-Lastrtime)*Avail;  
+          Lastrtime := T;
+          Avail := Avail - M;
+          if Avail < Extreme then Extreme := Avail; 
+          Current.OUT;  
+          Current.Wants := 0;
+          if (if FIRST == none then false else FIRST.Wants <= Avail)
+          then FIRST.Insertaft;
+      end***ACQUIRE***; 
+
+      procedure Release(M); integer M;  
+      begin 
+          long real T;
+          if M < 1 or (Avail+M) > Initial then  
+          Error(if M < 1 then 7 else 8, none, this Res, M,  
+          "R.RELEASE(N); REF(RES)R; INTEGER N;");
+          if Zyqtrace>0 then Note(6,"RELEASES",none,this Res,0,M);  
+          T     := Time;
+          Sint  := Sint + (T-Lastrtime)*Avail;  
+          Lastrtime := T;
+          Avail := Avail + M;
+          Users := Users + 1;
+          if (if FIRST == none then false else FIRST.Wants <= Avail)
+          then FIRST.Insertdelay0;  
+      end***RELEASE***; 
+
+      if Avail < 1 then 
+      Error(10, none, this Res, Avail,  
+      "NEW RES(TITLE, LIM); TEXT TITLE; INTEGER LIM;"); 
+      Join(Resq);
+         end***RES***;  
+
+         comment------------B I N-----------------------;
+
+         Resource class Bin;
+         begin  
+      procedure Take(M); integer M; 
+      begin 
+          long real T;
+          if M < 1 then 
+          Error(6, none, this Bin, 0,
+          "B.TAKE(M); REF(BIN)B; INTEGER M;");  
+          Current.INTO(this Queue); 
+          Current.Wants := M;
+          if Current =/= FIRST or M > Avail then
+          begin 
+       if Zyqtrace>0 then Note(7,"AWAITS",none,this Bin,0.0,M); 
+       Zyqpassivate;
+       while Current =/= FIRST or M > Avail do  
+       Zyqpassivate;
+          end;  
+          Current.OUT;  
+          Current.Wants := 0;
+          if Zyqtrace>0 then Note(8,"SEIZES",none,this Bin,0.0,M);  
+          T     := Time;
+          Sint  := Sint + (T-Lastrtime)*Avail;  
+          Lastrtime := T;
+          Avail := Avail - M;
+          if (if FIRST == none then false else FIRST.Wants <= Avail)
+          then FIRST.Insertaft;
+      end***TAKE***;
+
+      procedure Give(M); integer M; 
+      begin 
+          long real T;
+          if M < 1 then Error(9, none, this Bin, M, 
+          "B.GIVE(N); REF(BIN)B;  INTEGER N;"); 
+          if Zyqtrace>0 then Note(9,"GIVES",none,this Bin,0.0,M);
+          T := Time;
+          Sint := Sint + (T-Lastrtime)*Avail;
+          Lastrtime := T;
+          Avail := Avail + M;
+          Users := Users + 1;
+          if Avail > Extreme then Extreme := Avail; 
+          if (if FIRST == none then false else FIRST.Wants <= Avail)
+          then FIRST.Insertdelay0;  
+      end***GIVE***;
+
+      if Avail < 0 then Error(11, none, this Bin, Avail,
+      "NEW BIN(TITLE, INIT); TEXT TITLE; INTEGER INIT;");
+      Join(Binq);
+         end***BIN***;  
+
+         comment----------------W A I T Q--------------------;  
+
+         Queue class Waitq; 
+         begin  
+      ref(Queue)Masterq;
+
+      procedure Wait;
+      begin 
+          Current.INTO(this Queue); 
+          if Zyqtrace>0 then Note(14,"WAITS",none,this Queue,0.0,0);
+          if Masterq.FIRST =/= none then Masterq.FIRST.Insertdelay0;
+          Zyqpassivate; 
+      end***WAIT***;
+
+      ref(Entity)procedure Coopt;
+      begin 
+          ref(Entity)P; 
+          Current.INTO(Masterq);
+          if LENGTH = 0 or Current =/= Masterq.FIRST then
+          begin 
+       if Zyqtrace>0 then Note(17,"WAITS",none,Masterq,0.0,0);  
+       Zyqpassivate;
+       while LENGTH = 0 do  
+       Zyqpassivate;
+       P :- Current.SUC;
+       if P =/= none and LENGTH > 1 then P.Insertaft;  
+          end;  
+          Current.OUT;  
+          P :- Coopt :- FIRST;  
+          P.Coopt;  
+      end***COOPT***;
+
+      boolean procedure Avail(E, C); name E, C; 
+      ref(Entity)E; boolean C;  
+      begin 
+          ref(Entity)P; 
+          E :- P :- FIRST;  
+          while (if P == none then false else not C) do 
+          P :- E :- P.SUC;  
+          Avail := P =/= none;  
+
+      end***AVAIL***;
+
+      procedure Find(E, C); name E, C;  
+      ref(Entity)E; boolean C;  
+      begin 
+          ref(Entity)P; 
+          Current.INTO(Masterq);
+          if not Avail(E, C) then
+          begin 
+       if Zyqtrace > 0 then 
+       Note(15,"IS BLOCKED",none,this Waitq,0.0,0); 
+       Zyqpassivate;
+       while not Avail(E, C) do 
+       begin
+           if Current.SUC =/= none and LENGTH > 0 then  
+           Current.SUC.Insertaft;  
+           Zyqpassivate;
+       end; 
+          end;  
+          P :- Current.SUC; 
+          Current.OUT;  
+          E.Coopt;  
+          if Zyqtrace>0 then Note(16,"FINDS",E,this Waitq,0.0,0);
+          if P =/= none and LENGTH > 0 then P.Insertaft;
+      end***FIND***;
+
+      Masterq :- new Noqueue(Title);
+      Masterq.Join(Waitqq); 
+      Join(Waitqq); 
+         end***WAITQ***;
+
+         comment---------------C O N D Q-------------------;
+
+         Queue class Condq; 
+         begin  
+
+      boolean All;  
+
+      procedure Waituntil(C); name C; boolean C;
+      begin 
+          Current.INTO(this Condq); 
+          if not C then 
+          begin 
+       if Zyqtrace > 0 then 
+       Note(19,"W'UNTIL IN", none,this Condq,0.0,0);
+       Zyqpassivate;
+       while not C do
+       begin
+           if All and Current.SUC =/= none then 
+           Current.SUC.Insertaft;  
+           Zyqpassivate;
+       end; 
+       if Zyqtrace>0 then Note(20,"LEAVES",none,this Condq,0.0,0);  
+          end;  
+          if Current.SUC=/=none then Current.SUC.Insertaft;
+          Current.OUT;  
+      end***WAITUNTIL***;
+
+      procedure Signal; 
+      begin 
+          if Zyqtrace > 0 then  
+          Note(25, "SIGNALS",  none, this Condq, 0.0, 0);
+          if LENGTH > 0 then FIRST.Insertdelay0;
+      end***SIGNAL***;  
+
+      Join(Condqq); 
+         end***CONDQ***;
+
+         comment----------T R A C I N G   R O U T I N E S-------------; 
+
+         long real Zyqnotelastt;  ref(Entity)Zyqnotelaste;  integer Zyqtrace;
+
+         procedure Trace;
+         if Zyqtrace > 0 then Zyqtrace := Zyqtrace+1 else
+         begin Outf.OUTIMAGE;  Outf.OUTIMAGE;
+      Clocktime;
+      Box("T R A C I N G   C O M M E N C E S"); 
+      Outf.OUTTEXT("      TIME/ CURRENT     AND ITS ACTION(S)");
+      Outf.OUTIMAGE;  Outf.OUTIMAGE;
+      Zyqtrace := 1;
+         end***TRACE***;
+
+         procedure Notrace; 
+         if Zyqtrace > 1 then Zyqtrace := Zyqtrace-1 else
+         begin Outf.OUTIMAGE;  Outf.OUTIMAGE;
+      Clocktime;
+      Box("T R A C I N G   S W I T C H E D   O F F");
+      Zyqtrace := 0;
+      Zyqnotelastt := -15.0;
+      Zyqnotelaste :- none; 
+         end***NOTRACE***;  
+
+         procedure Note(Index,Action,E,L,T1,N);value Action;text Action;
+         integer Index, N; long real T1; ref(Entity)E; ref(Tab)L;
+         begin long real T; ref(Entity)C;
+
+      procedure Intout(N); integer N;
+      begin integer P;  
+          if N < 0 then 
+          begin 
+       N := -N; 
+       Outf.OUTCHAR('-');
+          end;  
+          P := if N < 10 then 1 else
+          if N < 100 then 2 else
+          if N < 1000 then 3 else
+          if N < 10000 then 4 else  
+          if N < 100000 then 5 else 10; 
+          Outf.OUTINT(N, P);
+      end***INTOUT***;  
+
+      procedure Realout(X); long real X; 
+      begin integer P;  
+          if X < 0 then 
+          begin 
+       X := -X; 
+       Outf.OUTCHAR('-');
+          end;  
+          P := if X < 10.0 then 5 else  
+          if X < 100.0 then 6 else  
+          if X < 1000.0 then 7 else 
+          if X < 10000.0 then 8 else
+          if X < 100000.0 then 9 else
+          if X < 1000000.0 then 10 else 15;
+          if P = 0 then Outf.OUTREAL(X,5,10) else Outf.OUTFIX(X,3,P);
+      end***REALOUT***; 
+
+      switch Message := M1, M2, M3, M4, M5, M6, M7, M8, M9, 
+      M10,M11,M12,M13,M14,M15,M16,M17,M18,  
+      M19,M20,M21,M22,M23,M24,M25;  
+      T := Time;
+      C :- Current; 
+      if (ABS(T)-Zyqnotelastt) > 0.0005 then
+      begin Zyqnotelastt := T;  
+          Printreal(T); 
+      end;  
+      if Zyqnotelaste =/= C then
+      begin Outf.SETPOS(12);
+          Zyqnotelaste :- C;
+          Outf.OUTTEXT(C.Title);
+      end;  
+
+      Outf.SETPOS(25);  
+      Outf.OUTTEXT(Action); 
+      Outf.OUTCHAR(' ');
+      if Index>=1 and then Index<=25 then goto Message(Index);  
+
+      M1:     comment E.COOPT;  
+      M18:    comment Q.COOPT     - COOPTS; 
+      M23:    comment CANCEL(E);
+      if E == none then Outf.OUTTEXT("NONE]") else  
+      if E == Current then Outf.OUTTEXT("ITSELF")
+      else Outf.OUTTEXT(E.Title);
+      if L =/= none then
+      begin Outf.OUTTEXT(" FROM "); 
+          Outf.OUTTEXT(L.Title);
+      end;  
+      goto Exit;
+
+      M2:     comment E.SCHEDULE(T);
+      Outf.OUTTEXT(E.Title);
+      if T1 <= 0.0 then Outf.OUTTEXT(" NOW") else
+      begin Outf.OUTTEXT(" AT ");
+          Realout(T+T1);
+      end;  
+      goto Exit;
+
+      M3:     comment TERMINATES;
+      goto Exit;
+
+      M4:     comment RES.ACQUIRE - BLOCKED;
+      M5:     comment RES.ACQUIRE - SEIZES; 
+      M6:     comment RES.RELEASE - RELEASES;
+      M7:     comment BIN.TAKE    - BLOCKED;
+      M8:     comment BIN.TAKE    - SEIZES; 
+      M9:     comment BIN.GIVE    - RELEASES;
+      Intout(N);
+      if Index=6 or Index=9 then Outf.OUTTEXT(" TO ")
+      else Outf.OUTTEXT(" OF ");
+      Outf.OUTTEXT(L.Title);
+      goto Exit;
+
+      M16:    comment Q.FIND      - FINDS;  
+      Outf.OUTTEXT(E.Title);
+      Outf.OUTCHAR(' ');
+
+      M14:    comment Q.WAIT;
+      M15:    comment Q.FIND      - BLOCKED;
+      M17:    comment Q.COOPT     - BLOCKED;
+      Outf.OUTTEXT("IN ");  
+
+      M19:    comment Q.WAITUNTIL - WAITS;  
+      M20:    comment Q.WAITUNTIL - LEAVES; 
+      M25:    comment Q.SIGNAL; 
+      Outf.OUTTEXT(L.Title);
+      goto Exit;
+
+      M21:    comment HOLDS;
+      Realout(T1);  
+      Outf.OUTTEXT(", UNTIL "); 
+      Realout(T+T1);
+      goto Exit;
+
+      M22:    comment ZYQPASSIVATE; 
+      goto Exit;
+
+      M24:    comment E.INTERRUPT(N);
+      Outf.OUTTEXT(E.Title);
+      Outf.OUTTEXT(", WITH POWER = ");  
+      Intout(N);
+      goto Exit;
+
+      M10:M11:M12:M13:  
+      Exit:   Outf.OUTIMAGE;
+         end***NOTE***; 
+
+         comment------- E R R O R   H A N D L I N G-------; 
+
+         procedure Error(No, E, Q, N, CALL);
+         value CALL; integer No, N; 
+         text CALL; ref(Entity)E; ref(Tab)Q;
+         begin  
+
+      procedure Nextline;
+      begin 
+          OUTCHAR('.'); 
+          OUTIMAGE; 
+          SYSOUT.SETPOS(9); 
+      end***NEXTLINE***;
+
+      procedure Intout(N); integer N;
+      begin integer P;  
+          OUTCHAR(' '); 
+          if N < 0 then 
+          begin 
+       N := -N; 
+       OUTCHAR('-');
+          end;  
+          P := if N < 10 then 1 else
+          if N < 100 then 2 else
+          if N < 1000 then 3 else
+          if N < 10000 then 4 else  
+          if N < 100000 then 5 else 10; 
+          OUTINT(N, P); 
+      end***INTOUT***;  
+
+      procedure Printreal(X); long real X;
+      begin integer P;  
+          OUTCHAR(' '); 
+          if X < 0 then 
+          begin 
+       X := -X; 
+       OUTCHAR('-');
+          end;  
+          P := if X < 10.0 then 5 else  
+          if X < 100.0 then 6 else  
+          if X < 1000.0 then 7 else 
+          if X < 10000.0 then 8 else
+          if X < 100000.0 then 9 else 0;
+          if P = 0 then OUTREAL(X, 5, 10) else OUTFIX(X, 3, P); 
+      end***PRINTREAL***;
+
+      ref(Entity)C; 
+      switch Case := E1, E2, E3, E4, E5, E6, E7, E8, E9, E10,
+      E11,E12,E13,E14,E15,E16,E17,E18,E19,E20;  
+
+      SYSOUT.SETPOS(23);
+      OUTTEXT("CLOCK TIME = "); 
+      if Time > 99999.0 then OUTREAL(Time, 5, 12)
+      else OUTFIX(Time, 3, 10); 
+      OUTIMAGE; 
+      Abort(false); 
+
+      OUTTEXT("**CAUSE : CALL ON '");
+      OUTTEXT(CALL);
+      OUTCHAR('''); 
+      Nextline; 
+
+      OUTTEXT("CURRENT == ");
+      OUTTEXT(Current.Title);
+      Nextline; 
+      if No>=1 and then No<=20 then goto Case(No);
+
+      E1:         comment E.COOPT;  
+      OUTTEXT("ATTEMPT BY CURRENT TO COOPT '"); 
+      OUTTEXT(E.Title); 
+      OUTCHAR('''); 
+      Nextline; 
+      OUTTEXT(E.Title); 
+      OUTTEXT(" IS ALREADY COOPTED BY ");
+      OUTTEXT(E.Owner.Title);
+      goto Blowup;  
+
+      E2:     comment E.INTO(Q);
+      OUTTEXT("Q == NONE"); 
+      Nextline; 
+      OUTTEXT("ATTEMPT BY CURRENT TO PLACE ");  
+      if E == Current then OUTTEXT("ITSELF")
+      else OUTTEXT(E.Title);
+      OUTTEXT(" INTO A NULL QUEUE");
+      Nextline; 
+      OUTTEXT("STATEMENT IGNORED.");
+      goto Continue;
+
+      E3:     comment E.INTO(Q);
+      OUTTEXT("CURRENT TRIES TO PLACE ");
+      if E == Current then OUTTEXT("ITSELF")
+      else OUTTEXT(E.Title);
+      OUTTEXT(" INTO QUEUE '"); 
+      OUTTEXT(Q.Title);  OUTCHAR(''');  
+      Nextline; 
+      OUTTEXT(E.Title); 
+      OUTTEXT(" IS ALREADY IN ");
+      OUTTEXT(E.Currentq.Title);
+      Nextline; 
+      OUTTEXT(E.Title); 
+      OUTTEXT(" LEAVES ");  
+      OUTTEXT(E.Currentq.Title);
+      OUTTEXT(" AND ENTERS ");  
+      if Q == none then OUTTEXT("A NULL QUEUE]")
+      else OUTTEXT(Q.Title);
+      goto Continue;
+
+      E4:     comment R.ACQUIRE(N) : N < 0; 
+      E5:     comment R.ACQUIRE(N) : N > R.LIMIT;
+      E6:     comment B.TAKE(N)    : N < 0; 
+      E7:     comment R.RELEASE(N) : N < 0; 
+      E8:     comment R.RELEASE(N) : N > R.LIMIT;
+      E9:     comment B.GIVE(N)    : N < 0; 
+      OUTTEXT("N =");
+      Intout(N);
+      Nextline; 
+      if No <= 6 then OUTTEXT("REQUEST FOR ")
+      else OUTTEXT("ATTEMPT TO RETURN ");
+      if N < 1 then OUTTEXT("NON-POSITIVE") 
+      else OUTTEXT("TOO MANY"); 
+      OUTTEXT(" UNITS ");
+      if No <= 6 then OUTTEXT("FROM ") else OUTTEXT("TO "); 
+      if Q in Res then OUTTEXT("RES") else OUTTEXT("BIN");  
+      OUTCHAR(' ');  OUTCHAR(''');  
+      OUTTEXT(Q.Title);  OUTCHAR(''');  
+      Nextline; 
+      if Q in Bin then OUTTEXT("SET N > 0") else
+      begin 
+          OUTTEXT("SET 0 < N <= R.LIMIT (=");
+          Intout(Q qua Resource.Initial);
+          OUTCHAR(')'); 
+      end;  
+      goto Blowup;  
+
+      E10:    comment NEW RES(TITLE, LIMIT);
+      E11:    comment NEW BIN(TITLE, INITIAL SIZE); 
+      if No = 10 then OUTTEXT("LIMIT OF RES '") 
+      else OUTTEXT("INITIAL SIZE OF BIN '");
+      OUTTEXT(Q.Title); 
+      OUTTEXT("' =");
+      Intout(N);
+      Nextline; 
+      OUTTEXT("IT SHOULD BE "); 
+      if No=10 then OUTTEXT("POSITIVE") 
+      else OUTTEXT("NON-NEGATIVE"); 
+      OUTCHAR('.');  OUTCHAR(' ');  
+      if No=10 then OUTTEXT("SET LIMIT > 0")
+      else OUTTEXT("SET INITIAL SIZE >= 0");
+      goto Blowup;  
+
+      E12:    comment X.CANCEL : X IDLE;
+      OUTTEXT("ENTITY '");  
+      OUTTEXT(E.Title); 
+      OUTTEXT("' IS NOT IN THE EVENT LIST.");
+      OUTIMAGE; 
+      goto Continue;
+
+      E13:    comment X.CANCEL : X SOLE ENTITY IN EVENT LIST;
+      OUTTEXT("ATTEMPT TO CANCEL LAST ENTITY IN EVENT LIST");
+      goto Blowup;  
+
+      E14:    comment E.SCHEDULE(T) : E TERMINATED; 
+      OUTTEXT("E == '");
+      OUTTEXT(E.Title); 
+      OUTTEXT("' IS TERMINATED AND CANNOT BE SCHEDULED");
+      goto Blowup;  
+
+      E15:    comment IMPLEMENTATION ERROR; 
+      OUTTEXT("SYSTEM ERROR: PLEASE CONTACT THE  ");
+      OUTTEXT("IMPLEMENTER, GRAHAM BIRTWISTLE");
+      goto Blowup;  
+
+      E16:    comment E.SCHEDULE(T): REF(ENTITY)T: LONG REAL T;  
+      OUTTEXT("E == '");
+      OUTTEXT(E.Title); 
+      OUTTEXT("' IS ALREADY SCHEDULED.");
+      goto Join;
+
+      E17:    comment E.CANCEL: REF(ENTITY)E;
+      OUTTEXT("ATTEMPT TO CANCEL NON-SCHEDULED ENTITY E == '"); 
+      OUTTEXT(E.Title);  OUTCHAR(''');  
+      Join:   Nextline; 
+      OUTTEXT("STATEMENT IGNORED.");
+      goto Continue;
+
+      E18:    comment T.JOIN(R): REF(TAB)T: REF(REPORTQ)R;  
+      OUTTEXT("TAB '"); 
+      OUTTEXT(Q.Title); 
+      OUTTEXT("' TRIES TO JOIN A NULL REPORTQ");
+      Nextline; 
+      OUTTEXT("T WILL NOT BE REPORTED UNLESS YOU ");
+      OUTTEXT(" CALL 'T.REPORT'."); 
+      goto Continue;
+
+      E19:    comment NEW HISTOGRAM(T, L, U, N);
+      OUTTEXT("ATTEMPT TO CREATE ILLEGAL HISTOGRAM '"); 
+      OUTTEXT(Q.Title); 
+      OUTCHAR('''); 
+      Nextline; 
+      OUTTEXT("LOWER BOUND = ");
+      Printreal(Q qua Histogram.Lower); 
+      Nextline; 
+      OUTTEXT("UPPER BOUND = ");
+      Printreal(Q qua Histogram.Upper); 
+      Nextline; 
+      OUTTEXT("UPPER MUST BE GREATER THAN LOWER");  
+      Nextline; 
+      OUTTEXT("ACTION: LOWER <- 0.0, AND UPPER <- 100.0."); 
+      goto Continue;
+
+      E20:    comment NEW EMPIRICAL(T, 1);  
+      OUTTEXT("ATTEMPT TO CREATE EMPIRICAL OBJECT '");  
+      OUTTEXT(Q.Title);  OUTCHAR(''');  
+      Nextline; 
+      OUTTEXT("SIZE = 1. SET SIZE > 1");
+      goto Blowup;  
+
+      Blowup:     OUTCHAR('.'); OUTIMAGE;
+      Abort(true);  
+      Continue:   OUTIMAGE; OUTIMAGE;
+         end***ERROR***;
+
+         procedure Abort(B); boolean B; 
+         begin  
+      integer L;
+      if B then L := 27 else L := 28;
+      OUTTEXT(Minuses);  OUTIMAGE;  
+      OUTTEXT(Minuses.SUB(1, L));
+      if B then OUTTEXT("PROGRAM  ABORTED") 
+      else OUTTEXT("SERIOUS  ERROR");
+      OUTTEXT(Minuses.SUB(1, L));  OUTIMAGE;
+      OUTTEXT(Minuses);  OUTIMAGE;  
+      if B then 
+      begin 
+          if Inf =/= SYSIN and Inf.IMAGE =/= notext then Inf.CLOSE; 
+          if Outf =/= SYSOUT and Outf.IMAGE =/= notext then Outf.CLOSE; 
+          L := 0;
+          L := 1/L; 
+      end;  
+         end***ABORT***;
+
+         comment---------S N A P P I N G   R O U T I N E S------------; 
+
+         procedure Report;  
+         begin ref(Reportq)R;
+      Outf.OUTIMAGE;  Outf.OUTIMAGE;
+      Clocktime;
+      Box("R E P O R T");
+      if Zyqreplication 
+      then begin
+          Outf.OUTTEXT("REPLICATION:"); 
+          if Zyqat then 
+          begin 
+       Outf.OUTINT(Zyqrcount-1,4);  
+       Outf.OUTTEXT(" AND");
+       Outf.OUTINT(Zyqrcount,4);
+       Outf.OUTTEXT(" (ANTITHETIC)");
+          end
+          else Outf.OUTINT(Zyqrcount,4);
+      end
+      else Outf.OUTIMAGE;
+      for R:-Distq,Empq,Accumq,Countq,Tallyq,Histoq,Regressq,
+      Resq,Binq,Queueq,Waitqq,Condqq do 
+      if R.FIRST =/= none then  
+      begin 
+          Outf.OUTIMAGE;
+          Outf.OUTIMAGE;
+          R.Report; 
+      end;  
+         end***REPORT***;
+
+         procedure Noreport;
+         Zyqreport := false;
+
+         integer procedure reset;
+         begin ref(Reportq)R;
+      for R:-Distq,Empq,Accumq,Countq,Tallyq,Histoq,Regressq,
+      Resq,Binq,Queueq,Waitqq,Condqq do 
+      if R.FIRST =/= none then R.Reset; 
+         end***RESET***;
+
+         integer procedure resetextra;  
+         begin  
+      ref(Reportq)R;
+      for R:- Distq,Empq,Resq,Binq,Waitqq,Condqq,Tallyq,
+      Accumq,Countq,Histoq,Regressq,Queueq do
+      if R.FIRST =/= none then R.Resetextra;
+         end *** RESETEXTRA ***;
+
+         procedure Snapqueues;  
+         begin ref(Tab)Q; integer K; ref(Entity)E;  
+      Outf.OUTIMAGE; Outf.OUTIMAGE; 
+      Clocktime;
+      Box("L I S T   O F   P A S S I V E   O B J E C T S"); 
+      for Q :- Queueq.FIRST, Condqq.FIRST, Waitqq.FIRST do  
+      begin 
+          while Q =/= none do
+          begin 
+       Q qua Queue.List;
+       Outf.OUTIMAGE;  Outf.OUTIMAGE;
+       Q :- Q.Next; 
+          end;  
+          Outf.OUTIMAGE; Outf.OUTIMAGE; 
+      end;  
+         end***SNAPQUEUES***;
+
+         procedure Snapsqs; 
+         begin integer K;
+      procedure Traverse(R); ref(Entity)R;  
+      begin 
+          if R.Ll =/= none then Traverse(R.Ll); 
+          if R.Rl =/= none then Traverse(R.Rl); 
+          K := K+1;  Outf.OUTINT(K, 5);  R.List;
+      end***TRAVERSE***;
+
+      Outf.OUTIMAGE; Outf.OUTIMAGE; 
+      Clocktime;
+      Box("E V E N T   L I S T");
+      Outf.OUTTEXT("    N/ EV. TIME/OBJ. TITLE / ");
+      Outf.OUTTEXT("LL           BL           RL"); 
+      Outf.OUTIMAGE;
+      Traverse(Root);
+      Outf.OUTIMAGE;  Outf.OUTIMAGE;
+         end***SNAPSQS***;  
+
+         Entity class Mainprogram;  
+         begin  
+      Loop: 
+      DETACH;
+      goto Loop;
+         end***MAINPROGRAM***;  
+
+         class Zyqenttitle(T); text T;  
+         begin integer N, L;
+      ref(Zyqenttitle)Nexttitle;
+      Nexttitle   :- Zyqentnames;
+      Zyqentnames :- this Zyqenttitle;  
+      L := T.LENGTH;
+      N := 1;
+         end***ZYQENTTITLE***;  
+
+         procedure Norepli; 
+         begin  
+      Zyqreplication:=false;
+      Zyqreport := false;
+         end *** NOREPLICATION ***; 
+
+         procedure Replicate;
+         begin  
+      ref(Reportq)R;
+      for R:-Countq,Tallyq,Resq,Binq,Waitqq,Condqq,Accumq,Queueq do
+      if R.FIRST =/= none then  
+      R.Rupdate;
+      if Zyqantithetic then Zyqreport := false; 
+
+      Replication:=Replication+1;
+      Zyqrcount:=Zyqrcount+1;
+      Zyqreplication:=true; 
+
+      if Zyqreport then Report; 
+
+      Zyqat:=false; 
+      Zyqentnames:-none;
+      Zyqmodulo:=67099547;  
+      Now:=-10&20;  
+      Zyqnotelastt:=-15.0;  
+      Zyqreport:=true;  
+      Current:-Root:-Demos; 
+      Demos.Timein:=0.0;
+      Demos.Evtime:=0.0;
+      Demos.Priority:=0;
+      Demos.Cycle:=0;
+      Demos.Wants:=0;
+      Demos.Interrupted:=0; 
+      Demos.Currentq:-none; 
+      Demos.Owner:-none;
+      Demos.Terminated:=false;  
+      Demos.Ll:-none;
+      Demos.Bl:-none;
+      Demos.Rl:-none;
+      Demos.SUC:-none;  
+      Demos.PRED:-none; 
+      if not Zyqantithetic then Reset;  
+      Resetextra;
+         end *** REPLICATE ***; 
+
+         procedure Antitheticreplicate; 
+         begin  
+      Zyqat:=true;  
+      Zyqantithetic := not Zyqantithetic;
+      Replicate;
+         end *** ANTITHETICREPLICATE ***;
+
+         procedure Repli;
+         begin ref(Reportq)R;
+      Outf.OUTIMAGE; Outf.OUTIMAGE; Outf.OUTIMAGE;  
+      Clocktime;
+      Box("T O T A L  R E P L I C A T I O N  R E P O R T"); 
+      for R:-Countq,Tallyq,Resq,Binq,Waitqq,Condqq do  
+      if R.FIRST =/= none then  
+      begin 
+          Outf.OUTIMAGE; Outf.OUTIMAGE; 
+          R.Repli;  
+      end;  
+         end *** RREPORT ***;
+
+      ! 950505/peh:
+      ! the heading is moved to enable access to procedures T_value and N_value;
+         !boolean procedure Confidence(S,D,Alpha);
+         !long real S,D,Alpha;
+         !begin  
+      !long real V;
+
+      long real procedure T_value(Alpha,Degree); 
+      long real Alpha; integer Degree;
+      begin 
+          long real array T(1:14,1:5);
+          integer X,Y;  
+          T(1,1):=2.02; T(1,2):=2.57; T(1,3):=3.37; T(1,4):=4.03; T(1,5):=6.87;
+          T(2,1):=1.94; T(2,2):=2.45; T(2,3):=3.14; T(2,4):=3.71; T(2,5):=5.96;
+          T(3,1):=1.89; T(3,2):=2.36; T(3,3):=3.00; T(3,4):=3.50; T(3,5):=5.41;
+          T(4,1):=1.86; T(4,2):=2.31; T(4,3):=2.90; T(4,4):=3.36; T(4,5):=5.04;
+          T(5,1):=1.83; T(5,2):=2.26; T(5,3):=2.82; T(5,4):=3.25; T(5,5):=4.78;
+          T(6,1):=1.81; T(6,2):=2.23; T(6,3):=2.76; T(6,4):=3.17; T(6,5):=4.59;
+          T(7,1):=1.80; T(7,2):=2.20; T(7,3):=2.72; T(7,4):=3.11; T(7,5):=4.44;
+          T(8,1):=1.78; T(8,2):=2.18; T(8,3):=2.68; T(8,4):=3.05; T(8,5):=4.32;
+          T(9,1):=1.77; T(9,2):=2.16; T(9,3):=2.65; T(9,4):=3.01; T(9,5):=4.22;
+          T(10,1):=1.76;T(10,2):=2.14;T(10,3):=2.62;T(10,4):=2.98;T(10,5):=4.14;
+          T(11,1):=1.75;T(11,2):=2.13;T(11,3):=2.60;T(11,4):=2.95;T(11,5):=4.07;
+          T(12,1):=1.72;T(12,2):=2.09;T(12,3):=2.53;T(12,4):=2.85;T(12,5):=3.85;
+          T(13,1):=1.71;T(13,2):=2.06;T(13,3):=2.49;T(13,4):=2.79;T(13,5):=3.73;
+          T(14,1):=1.70;T(14,2):=2.04;T(14,3):=2.46;T(14,4):=2.75;T(14,5):=3.65;
+          if Degree < 16 then X:=Degree-4 else  
+          if Degree < 20 then X:=11 else
+          if Degree < 25 then X:=12 else
+          if Degree < 30 then X:=13 else X:=14; 
+          if Alpha < .01 then Y:=5 else 
+          if Alpha < .02 then Y:=4 else 
+          if Alpha < .05 then Y:=3 else 
+          if Alpha < .1 then Y:=2 else Y:=1;
+          T_value:=T(X,Y);  
+      end *** T_VALUE ***;  
+
+      long real procedure N_value(Alpha);
+      long real Alpha;
+      begin 
+          long real array N(1:5);
+          integer X;
+          N(1):=1.645;N(2):=1.960;N(3):=2.326;N(4):=2.576;N(5):=3.290;  
+          if Alpha < .01 then X:=5 else 
+          if Alpha < .02 then X:=4 else 
+          if Alpha < .05 then X:=3 else 
+          if Alpha < .1 then X:=2 else X:=1;
+          N_value:=N(X);
+      end *** N_VALUE ***;  
+
+
+         boolean procedure Confidence(S,D,Alpha);
+         long real S,D,Alpha;
+         begin  
+      long real V;
+
+       if Zyqrcount < 6  
+      then Confidence := true
+      else  
+      begin 
+          if Zyqrcount <= 30
+          then V := T_value(Alpha,Zyqrcount-1)  
+          else V := N_value(Alpha); 
+          if Zyqrcount > (V*S/D)**2 
+          then Confidence := false  
+          else Confidence := true;  
+      end;  
+         end *** CONFIDENCE ***;
+
+
+       long real procedure Quantile(Alpha, Nobs);
+         long real Alpha;
+         integer Nobs;
+         begin  
+         long real V;
+           if Nobs <= 30
+           then V := T_value(Alpha,Nobs-1)  
+           else V := N_value(Alpha); 
+
+           Quantile  := V;
+         end *** QUANTILE ***; 
+
+
+       long real procedure ConfWidth(S,Alpha,Nobs);
+         long real S,Alpha;
+         integer Nobs;
+         begin  
+         long real V;
+           V := Quantile(Alpha, Nobs);
+           
+           ConfWidth := V*S/Sqrt(Nobs);
+         end *** ConfWidth ***;
+
+
+         comment--------LOCAL VARIABLES AND THEIR INITIALISATIONS ----; 
+
+         ref(Reportq)Empq, Tallyq, Accumq, Histoq, Countq, Distq;
+         ref(Reportq)Resq, Binq, Queueq, Condqq, Waitqq, Regressq;  
+         text Tallyheading, Accumheading, Distheading;  
+         text Headingrtn, CountHeadingrtn, Stars, Minuses, 
+              Zyqreason, Zyqrecvry; 
+         text Resheading, Binheading, Qheading; 
+         text Rtallyheading,Rcountheading,Rbinheading,Rresheading,Rqheading;  
+	 ! 991021/peh: Increase the size of the Disttype by one element;
+         text array Disttype(0:11);  
+         integer Zyqseed, Zyqmodulo;
+         integer Zyqrcount,Replication; 
+         boolean Zyqreplication;
+         ref(INFILE)Inf;
+         ref(OUTFILE)Outf;  
+         ref(Zyqenttitle)Zyqentnames;
+         ref(Mainprogram)Demos; 
+         ref(Entity)Root, Current;  
+         long real Now, Simperiod, Epsilon;  
+         boolean Zyqreport; 
+         boolean Zyqat,Zyqantithetic;
+
+         Zyqreport := true; 
+         Epsilon := 0.00001;
+         Replication := 1;  
+
+         Headingrtn  :-COPY("TITLE       /   (RE)SET/   OBS"); 
+         CountHeadingrtn:- 
+             COPY("                   TITLE       /   (RE)SET/   OBS");
+         Accumheading:-COPY("/  AVERAGE/EST.ST.DV/ STD.ERR./  MINIMUM/  MAXIMUM");
+         Distheading :-COPY("/TYPE     /        A/        B/     SEED");
+         Tallyheading:-Accumheading;
+         Resheading  :-COPY("/ LIM/ MIN/ NOW/  % USAGE/ AV. WAIT/QMAX");
+         Binheading  :-COPY("/INIT/ MAX/ NOW/ AV. FREE/ AV. WAIT/QMAX");
+         Qheading    :-COPY("/ QMAX/ QNOW/ Q AVERAGE/ZEROS/  AV. WAIT");
+         Rtallyheading:-COPY("/  AVERAGE/EST.ST.DV/ STD.ERR.");
+         Rcountheading:-
+            COPY("TITLE      /   (RE)SET/   OBS/  AVERAGE/EST.ST.DV/ STD.ERR.");
+         Rbinheading:-COPY("/ AV. FREE/EST.ST.DV/ AV. WAIT/EST.ST.DV"); 
+         Rresheading:-COPY("/  % USAGE/EST.ST.DV/ AV. WAIT/EST.ST.DV"); 
+         Rqheading:-COPY("/ Q AVERAGE/EST.ST.DV/  AV. WAIT/EST.ST.DV"); 
+
+         Disttype(0) :-COPY("UNDEFINED");
+         Disttype(1) :-COPY("NORMAL");   Disttype(2) :-COPY("UNIFORM"); 
+         Disttype(3) :-COPY("ERLANG");   Disttype(4) :-COPY("RANDINT"); 
+         Disttype(5) :-COPY("NEGEXP");   Disttype(6) :-COPY("POISSON"); 
+         Disttype(7) :-COPY("DRAW");     Disttype(8) :-COPY("CONSTANT");
+	 ! 960917/peh: Rayleigh is Type=9 of the Disttype array;
+         Disttype(9) :- COPY("RAYLEIGH");
+	 ! 991021/peh: Pareto is Type=10 of the Disttype array;
+         Disttype(10) :- COPY("PARETO");Disttype(11) :-COPY("EMPIRICAL");
+
+         Accumq :- new Reportq("A C C U M U L A T E S", 
+         Headingrtn, Accumheading, notext); 
+         Countq :- new Reportq("C O U N T S", Blanks(1), CountHeadingrtn, 
+         Rcountheading);
+         Distq  :- new Reportq("D I S T R I B U T I O N S", 
+         Headingrtn, Distheading, notext ); 
+         Empq   :- new Reportq("E M P I R I C A L S", notext, notext,
+         notext);
+         Regressq:-new Reportq("R E G R E S S I O N S",notext,notext,
+         notext);
+         Histoq :- new Reportq("H I S T O G R A M S", notext, notext,
+         notext);
+         Tallyq :- new Reportq("T A L L I E S",Headingrtn,Tallyheading, 
+         Rtallyheading);
+         Resq   :- new Reportq("R E S O U R C E S",Headingrtn,  
+         Resheading,Rresheading);
+         Binq   :- new Reportq("B I N S",Headingrtn,Binheading, 
+         Rbinheading);  
+         Queueq :- new Reportq("Q U E U E S",Headingrtn,Qheading,notext);
+         Condqq :- new Reportq("C O N D I T I O N   Q U E U E S",
+         Headingrtn, Qheading,Rqheading);
+         Waitqq :- new Reportq("W A I T   Q U E U E S", 
+         Headingrtn, Qheading,Rqheading);
+
+         Stars :- BLANKS(70);
+         while Stars.MORE do
+         Stars.PUTCHAR('*');
+
+         Minuses :- BLANKS(70); 
+         while Minuses.MORE do  
+         Minuses.PUTCHAR('-');  
+
+         Inf       :- SYSIN;
+         Outf      :- SYSOUT;
+         Zyqreason :- COPY("**REASON   : ");
+         Zyqrecvry :- COPY("**RECOVERY : ");
+         Zyqmodulo := 67099547;  Zyqseed := 907;
+         Now       := -100000000000000000000.0; 
+         Zyqnotelastt := -15.0; 
+         Current :- Root  :- Demos :- new Mainprogram("DEMOS"); 
+         Demos.Evtime := 0.0;
+         Demos.Title :- Demos.Title.SUB(1, 5);  
+
+         inner; 
+
+         while(if Demos==Root then false else Demos.Bl.Evtime<=Time)do  
+         Hold(0.0); 
+         
+        if Zyqreplication then Repli
+         else if Zyqreport then Report; 
+         if Inf =/= SYSIN and Inf.IMAGE =/= notext then Inf.CLOSE;  
+         if Outf =/= SYSOUT and Outf.IMAGE =/= notext then Outf.CLOSE;  
+     end***DEMOS***;

@@ -1,0 +1,58 @@
+begin
+  external class demos="../demos.atr";
+  demos
+  begin
+    !decalre the constants;
+    real  METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY,
+          METER_TO_BASE_STATION_TIME_DELAY,
+
+    !declare the distibutions;
+    real(RDist)   meterSendingTime_,
+                  delayFromBaseStationToController,
+                  dataProcessingTimeInController,
+
+
+
+    !declare tallys;
+    ref(Tally) totalPacketDelay_;
+
+    !declare the simulation logging variables.
+    integer sentPackets, recievedPackets, droppedPackets, lostPackets;
+
+    Entity class SmartMeter;
+    begin
+      !smart meter events goes here;
+    end
+
+    Entity class Packet;
+    begin
+      !smart meter events goes here;
+    end
+
+    Entity class BaseStation;
+    begin
+      !smart meter events goes here;
+    end
+
+    Entity class Controller;
+    begin
+      !smart meter events goes here;
+    end
+
+    Entity class ControllerFailure;
+    begin
+      !smart meter events goes here;
+    end
+
+    Entity class Server;
+    begin
+      !smart meter events goes here;
+    end
+
+    Entity class ServerFailure;
+    begin
+      !smart meter events goes here;
+    end
+
+  end
+end
