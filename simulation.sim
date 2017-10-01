@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 begin
   external class demos="../demos.atr";
   demos
@@ -56,3 +57,6 @@ begin
 
   end
 end
+=======
+
+>>>>>>> f35c5b2e107075d64aaa11eeb74b4fb6b894c7f0
