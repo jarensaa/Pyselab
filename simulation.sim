@@ -15,14 +15,20 @@ begin
                   dataProcessingTimeInServer_,
                   serverRestartTime_,
                   serverSwitchoverTime_,
-                  controllerRestartTime_;
+                  controllerRestartTime_,
+                  randomNumberGenerator_;
 
+    ref(Res)      controller_;
+
+    ref(WaitQ)    ServerQueue1_;
 
     ref(Tally)  totalTransferTime_,
-                measuredDelayFromMeterToBaseStation_;
+                measuredDelayFromMeterToBaseStation_,
+                lostPackets_;
 
     !declare the simulation logging variables;
     integer sentPackets, recievedPackets, droppedPackets, lostPackets, packetNumber;
+
 
 
     Entity class SmartMeter;
@@ -41,41 +47,67 @@ begin
     begin
       !packet goes from meter to BS, check for packet loss;
       hold(METER_TO_BASE_STATION_TIME_DELAY);
+
+      if randomNumberGenerator_.sample <= METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY then begin
+        lostPackets_.update(1);
+        goto disconnection;
+      end;
+
+
       totalTransferTime_.update(METER_TO_BASE_STATION_TIME_DELAY);
 
       !packet is sent from BS to Controller;
-
+      hold(delayFromBaseStationToController_.sample);
 
       !packet is queued in controller;
 
+      controller_.acquire(1);
+      hold(dataProcessingTimeInController_.sample);
+      controller_.release(1);
 
       !packet is sent to Server;
+      ServerQueue1_.wait;
 
 
       !log cool data;
+      disconnection:
+        !do nothing;
+
 
     end;
 
-    Entity class Server;
+    Entity class Server(ServerQueue_);
+    ref(WaitQ) ServerQueue_;
     begin
       !smart meter events goes here;
     end;
+
 
     !Initiate all the variables/constants/tallys and stuff.
     Then, make som objects,
     Then, run the program;
 
     METER_TO_BASE_STATION_TIME_DELAY := 0.110;
+    METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY := 0.05;
 
-    timeBetweenPacketsFromMeter_ :- new NegExp("Meter-BS-delay",0.5);
+
+    timeBetweenPacketsFromMeter_ :- new NegExp("Meter-BS-delay",2);
+    randomNumberGenerator_ :- new Uniform("numbergenerator",0,1);
+    delayFromBaseStationToController_ :- new NegExp("BS-Controler",1/0.02);
+    dataProcessingTimeInController_ :- new NegExp("controller",1/0.0001);
+
+    ServerQueue1_ :- new WaitQ("server1");
+
+    controller_ :- new Res("controller",1);
 
     measuredDelayFromMeterToBaseStation_ :- new Tally("meterdelay");
     totalTransferTime_ :- new Tally("totalTime");
+    lostPackets_ :- new Tally("lostPackets");
 
-
-
+    new Server("server1",ServerQueue1_);
     new SmartMeter("Meter 1").schedule(0);
-    hold(300);
+    hold(3000);
+
 
   end;
 end;
