@@ -3,18 +3,17 @@ begin
   demos
   begin
 
-    real  METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY,
-          METER_TO_BASE_STATION_TIME_DELAY,
-          SERVER_FAILURE_INTENSITY,
-          CONTROLLER_FAILURE_INTENSITY;
-
+    real          METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY,
+                  METER_TO_BASE_STATION_TIME_DELAY,
+                  AVARAGE_BASE_STATION_TO_CONTROLLER_DELAY,
+                  AVARAGE_CONTROLLER_PROCESSING_TIME,
+                  AVARAGE_SERVER_PROCESSING_TIME,
+                  PACKETS_PER_SECOND_FROM_METER,
+                  NUMBER_OF_METERS;
 
     ref(RDist)    delayFromBaseStationToController_,
                   dataProcessingTimeInController_,
                   dataProcessingTimeInServer_,
-                  serverRestartTime_,
-                  serverSwitchoverTime_,
-                  controllerRestartTime_,
                   randomNumberGenerator_,
                   timeBetweenPacketsFromMeter_;
 
@@ -22,20 +21,18 @@ begin
 
     ref(Res)      controller_;
 
-    ref(Bin)	  mybin_;
+    ref(Bin)	    mybin_;
 
     ref(WaitQ)    ServerQueue1_,
                   ServerQueue2_;
 
-    ref(Tally)  totalTransferTime_,
-                measuredDelayFromMeterToBaseStation_;
+    ref(Tally)    totalTransferTime_,
+                  measuredDelayFromMeterToBaseStation_;
 
-    ref(Count)  lostPackets_,
-                recievedPackets_;
-
-    !declare the simulation logging variables;
-    integer sentPackets,  droppedPackets, packetNumber;
-
+    ref(Count)    lostPackets_,
+                  recievedPackets_,
+                  fastEnoughPackets_,
+                  tooSlowPackets_;
 
 
     Entity class SmartMeter;
@@ -49,9 +46,10 @@ begin
         repeat;
     end;
 
+
+
     Entity class Packet;
     begin
-
       !Set timestamp for packet generation;
       long real timestamp;
       timestamp := time;
@@ -77,17 +75,16 @@ begin
       if ServerLoadBalancing_.sample then ServerQueue1_.wait
       else ServerQueue2_.wait;
 
-
-      !log cool data;
       totalTransferTime_.update(time-timestamp);
       recievedPackets_.update(1);
-
+      if time-timestamp < 0.2 then fastEnoughPackets_.update(1)
+      else tooSlowPackets_.update(1);
 
       disconnection:
       	mybin_.give(1);
-
-
     end;
+
+
 
     Entity class Server(ServerQueue_);
     ref(WaitQ) ServerQueue_;
@@ -101,37 +98,37 @@ begin
     end;
 
 
-    !Initiate all the variables/constants/tallys and stuff.
-    Then, make som objects,
-    Then, run the program;
-
-    METER_TO_BASE_STATION_TIME_DELAY := 0.110;
     METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY := 0.05;
+    METER_TO_BASE_STATION_TIME_DELAY := 0.110;
+    AVARAGE_BASE_STATION_TO_CONTROLLER_DELAY := 0.02;
+    AVARAGE_CONTROLLER_PROCESSING_TIME := 0.0001;
+    AVARAGE_SERVER_PROCESSING_TIME := 0.002;
+    PACKETS_PER_SECOND_FROM_METER := 0.1;
+    NUMBER_OF_METERS := 10000;
 
-
-    timeBetweenPacketsFromMeter_ :- new NegExp("metertime",1100);
+    timeBetweenPacketsFromMeter_ :- new NegExp("metertime",PACKETS_PER_SECOND_FROM_METER * NUMBER_OF_METERS);
     randomNumberGenerator_ :- new Uniform("numbergenerator",0,1);
-    delayFromBaseStationToController_ :- new NegExp("BS-Controler",1/0.02);
-    dataProcessingTimeInController_ :- new NegExp("controller",1/0.0001);
-    dataProcessingTimeInServer_ :- new NegExp("server",1/0.002);
+    delayFromBaseStationToController_ :- new NegExp("BS-Controler",1/AVARAGE_BASE_STATION_TO_CONTROLLER_DELAY);
+    dataProcessingTimeInController_ :- new NegExp("controller",1/AVARAGE_CONTROLLER_PROCESSING_TIME);
+    dataProcessingTimeInServer_ :- new NegExp("server",1/AVARAGE_SERVER_PROCESSING_TIME);
 
     ServerQueue1_ :- new WaitQ("server1");
     ServerQueue2_ :- new WaitQ("server2");
 
+    lostPackets_ :-       new Count("lostPackets");
+    recievedPackets_ :-   new Count("recieved");
+    fastEnoughPackets_ :- new Count("fast packets");
+    tooSlowPackets_ :-    new Count("slow packets");
+
     ServerLoadBalancing_ :- new Draw("server balance", 0.5);
-
     controller_ :- new Res("controller",1);
-
-    measuredDelayFromMeterToBaseStation_ :- new Tally("meterdelay");
-    totalTransferTime_ :- new Tally("totalTime");
-
-    lostPackets_ :- new Count("lostPackets");
-    recievedPackets_ :- new Count("recieved");
     mybin_ :- new Bin("mybin", 0);
+    totalTransferTime_ :- new Tally("totalTime");
 
     new Server("server1",ServerQueue1_).schedule(0);
     new Server("server2",ServerQueue2_).schedule(0);
     new SmartMeter("Meter 1").schedule(0);
+
     mybin_.take(100000);
 
   end;
