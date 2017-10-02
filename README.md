@@ -8,3 +8,19 @@ The reposetory includes a solution for the simulation lab for 2017. It's made us
 ## Dependencies
 - Simula
 
+
+## Local setup
+
+### Windows
+'''
+sim demos.sim
+sim -m400 simulation1-4.sim
+./simulation.exe
+'''
+
+### MacOS
+'''
+sim demos.sim
+sim -m400 simulation1-4.sim
+./simulation
+'''
