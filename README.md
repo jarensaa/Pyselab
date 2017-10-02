@@ -11,14 +11,14 @@ The reposetory includes a solution for the simulation lab for 2017. It's made us
 
 ## Local setup
 
-### Windows
+#### Windows
 ```
 $ sim demos.sim
 $ sim -m400 simulation1-4.sim
 $ ./simulation.exe
 ```
 
-### MacOS
+#### MacOS
 ```
 $ sim demos.sim
 $ sim -m400 simulation1-4.sim
