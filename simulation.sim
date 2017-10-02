@@ -15,13 +15,14 @@ begin
                   serverRestartTime_,
                   serverSwitchoverTime_,
                   controllerRestartTime_,
-                  randomNumberGenerator_;
-
-    ref(iDist)    packetsFromMeterPerSecond;
+                  randomNumberGenerator_,
+                  timeBetweenPacketsFromMeter_;
 
     ref(BDist)    ServerLoadBalancing_;
 
     ref(Res)      controller_;
+
+    ref(Bin)	  mybin_;
 
     ref(WaitQ)    ServerQueue1_,
                   ServerQueue2_;
@@ -39,11 +40,11 @@ begin
 
     Entity class SmartMeter;
     begin
-      real packetsPerSecond;
+      real time;
       !smart meter events goes here;
       loop:
-        packetsPerSecond := packetsFromMeterPerSecond.sample;
-        hold(1/packetsPerSecond);
+        time := timeBetweenPacketsFromMeter_.sample;
+        hold(time);
         new Packet("packet").schedule(now);
         repeat;
     end;
@@ -83,7 +84,7 @@ begin
 
 
       disconnection:
-        !do nothing;
+      	mybin_.give(1);
 
 
     end;
@@ -108,7 +109,7 @@ begin
     METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY := 0.05;
 
 
-    packetsFromMeterPerSecond :- new Poisson("metertime",500);
+    timeBetweenPacketsFromMeter_ :- new NegExp("metertime",1100);
     randomNumberGenerator_ :- new Uniform("numbergenerator",0,1);
     delayFromBaseStationToController_ :- new NegExp("BS-Controler",1/0.02);
     dataProcessingTimeInController_ :- new NegExp("controller",1/0.0001);
@@ -126,12 +127,12 @@ begin
 
     lostPackets_ :- new Count("lostPackets");
     recievedPackets_ :- new Count("recieved");
+    mybin_ :- new Bin("mybin", 0);
 
     new Server("server1",ServerQueue1_).schedule(0);
     new Server("server2",ServerQueue2_).schedule(0);
     new SmartMeter("Meter 1").schedule(0);
-    hold(200);
-
+    mybin_.take(100000);
 
   end;
 end;
