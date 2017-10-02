@@ -9,8 +9,7 @@ begin
           CONTROLLER_FAILURE_INTENSITY;
 
 
-    ref(RDist)    timeBetweenPacketsFromMeter_,
-                  delayFromBaseStationToController_,
+    ref(RDist)    delayFromBaseStationToController_,
                   dataProcessingTimeInController_,
                   dataProcessingTimeInServer_,
                   serverRestartTime_,
@@ -18,9 +17,14 @@ begin
                   controllerRestartTime_,
                   randomNumberGenerator_;
 
+    ref(iDist)    packetsFromMeterPerSecond;
+
+    ref(BDist)    ServerLoadBalancing_;
+
     ref(Res)      controller_;
 
-    ref(WaitQ)    ServerQueue1_;
+    ref(WaitQ)    ServerQueue1_,
+                  ServerQueue2_;
 
     ref(Tally)  totalTransferTime_,
                 measuredDelayFromMeterToBaseStation_;
@@ -35,12 +39,11 @@ begin
 
     Entity class SmartMeter;
     begin
-      real time;
+      real packetsPerSecond;
       !smart meter events goes here;
       loop:
-        time := timeBetweenPacketsFromMeter_.sample;
-        hold(time);
-        measuredDelayFromMeterToBaseStation_.update(time);
+        packetsPerSecond := packetsFromMeterPerSecond.sample;
+        hold(1/packetsPerSecond);
         new Packet("packet").schedule(now);
         repeat;
     end;
@@ -60,9 +63,6 @@ begin
         goto disconnection;
       end;
 
-
-      totalTransferTime_.update(METER_TO_BASE_STATION_TIME_DELAY);
-
       !packet is sent from BS to Controller;
       hold(delayFromBaseStationToController_.sample);
 
@@ -72,8 +72,10 @@ begin
       hold(dataProcessingTimeInController_.sample);
       controller_.release(1);
 
-      !packet is sent to Server;
-      ServerQueue1_.wait;
+      !packet is load balanced to Server1 or 2;
+      if ServerLoadBalancing_.sample then ServerQueue1_.wait
+      else ServerQueue2_.wait;
+
 
       !log cool data;
       totalTransferTime_.update(time-timestamp);
@@ -106,13 +108,16 @@ begin
     METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY := 0.05;
 
 
-    timeBetweenPacketsFromMeter_ :- new NegExp("Meter-BS-delay",2);
+    packetsFromMeterPerSecond :- new Poisson("metertime",500);
     randomNumberGenerator_ :- new Uniform("numbergenerator",0,1);
     delayFromBaseStationToController_ :- new NegExp("BS-Controler",1/0.02);
     dataProcessingTimeInController_ :- new NegExp("controller",1/0.0001);
     dataProcessingTimeInServer_ :- new NegExp("server",1/0.002);
 
     ServerQueue1_ :- new WaitQ("server1");
+    ServerQueue2_ :- new WaitQ("server2");
+
+    ServerLoadBalancing_ :- new Draw("server balance", 0.5);
 
     controller_ :- new Res("controller",1);
 
@@ -123,8 +128,9 @@ begin
     recievedPackets_ :- new Count("recieved");
 
     new Server("server1",ServerQueue1_).schedule(0);
+    new Server("server2",ServerQueue2_).schedule(0);
     new SmartMeter("Meter 1").schedule(0);
-    hold(300);
+    hold(200);
 
 
   end;
