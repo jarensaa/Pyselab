@@ -90,12 +90,11 @@ begin
     ref(WaitQ) ServerQueue_;
     begin
       ref(Packet) packet_;
-
       loop:
         packet_ :- ServerQueue_.coopt;
-          hold(dataProcessingTimeInServer_.sample);
+        hold(dataProcessingTimeInServer_.sample);
         packet_.schedule(now);
-
+        repeat;
     end;
 
 
@@ -123,7 +122,7 @@ begin
     lostPackets_ :- new Count("lostPackets");
     recievedPackets_ :- new Count("recieved");
 
-    new Server("server1",ServerQueue1_);
+    new Server("server1",ServerQueue1_).schedule(0);
     new SmartMeter("Meter 1").schedule(0);
     hold(300);
 
