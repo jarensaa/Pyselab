@@ -22,10 +22,12 @@ begin
 
     ref(Res)      controller_;
 
-    ref(Bin)	  mybin_;
+    ref(Bin)	    mybin_;
 
     ref(WaitQ)    ServerQueue1_,
-                  ServerQueue2_;
+                  ServerQueue2_,
+                  ServerQueue3_,
+                  ServerQueue4_;
 
     ref(Tally)  totalTransferTime_,
                 measuredDelayFromMeterToBaseStation_;
@@ -74,11 +76,18 @@ begin
       controller_.release(1);
 
       !packet is load balanced to Server1 or 2;
-      if ServerLoadBalancing_.sample then ServerQueue1_.wait
-      else ServerQueue2_.wait;
+      if ServerLoadBalancing_.sample then 
+        begin
+          if ServerLoadBalancing_.sample then ServerQueue1_.wait
+          else ServerQueue2_.wait;
+        end
+      else 
+        begin
+          if ServerLoadBalancing_.sample then ServerQueue3_.wait
+          else ServerQueue4_.wait;
+        end;
 
 
-      !log cool data;
       totalTransferTime_.update(time-timestamp);
       recievedPackets_.update(1);
 
@@ -109,7 +118,7 @@ begin
     METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY := 0.05;
 
 
-    timeBetweenPacketsFromMeter_ :- new NegExp("metertime",1100);
+    timeBetweenPacketsFromMeter_ :- new NegExp("metertime",20);
     randomNumberGenerator_ :- new Uniform("numbergenerator",0,1);
     delayFromBaseStationToController_ :- new NegExp("BS-Controler",1/0.02);
     dataProcessingTimeInController_ :- new NegExp("controller",1/0.0001);
@@ -117,6 +126,8 @@ begin
 
     ServerQueue1_ :- new WaitQ("server1");
     ServerQueue2_ :- new WaitQ("server2");
+    ServerQueue3_ :- new WaitQ("server3");
+    ServerQueue4_ :- new WaitQ("server4");
 
     ServerLoadBalancing_ :- new Draw("server balance", 0.5);
 
@@ -131,6 +142,9 @@ begin
 
     new Server("server1",ServerQueue1_).schedule(0);
     new Server("server2",ServerQueue2_).schedule(0);
+    new Server("server3",ServerQueue3_).schedule(0);
+    new Server("server4",ServerQueue4_).schedule(0);
+    
     new SmartMeter("Meter 1").schedule(0);
     mybin_.take(100000);
 
