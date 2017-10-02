@@ -1,62 +1,81 @@
-<<<<<<< HEAD
 begin
-  external class demos="../demos.atr";
+  external class demos="./demos.atr";
   demos
   begin
-    !decalre the constants;
+
     real  METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY,
           METER_TO_BASE_STATION_TIME_DELAY,
-
-    !declare the distibutions;
-    real(RDist)   meterSendingTime_,
-                  delayFromBaseStationToController,
-                  dataProcessingTimeInController,
+          SERVER_FAILURE_INTENSITY,
+          CONTROLLER_FAILURE_INTENSITY;
 
 
+    ref(RDist)    timeBetweenPacketsFromMeter_,
+                  delayFromBaseStationToController_,
+                  dataProcessingTimeInController_,
+                  dataProcessingTimeInServer_,
+                  serverRestartTime_,
+                  serverSwitchoverTime_,
+                  controllerRestartTime_;
 
-    !declare tallys;
-    ref(Tally) totalPacketDelay_;
 
-    !declare the simulation logging variables.
-    integer sentPackets, recievedPackets, droppedPackets, lostPackets;
+    ref(Tally)  totalTransferTime_,
+                measuredDelayFromMeterToBaseStation_;
+
+    !declare the simulation logging variables;
+    integer sentPackets, recievedPackets, droppedPackets, lostPackets, packetNumber;
+
 
     Entity class SmartMeter;
     begin
+      real time;
       !smart meter events goes here;
-    end
+      loop:
+        time := timeBetweenPacketsFromMeter_.sample;
+        hold(time);
+        measuredDelayFromMeterToBaseStation_.update(time);
+        new Packet("packet").schedule(now);
+        repeat;
+    end;
 
     Entity class Packet;
     begin
-      !smart meter events goes here;
-    end
+      !packet goes from meter to BS, check for packet loss;
+      hold(METER_TO_BASE_STATION_TIME_DELAY);
+      totalTransferTime_.update(METER_TO_BASE_STATION_TIME_DELAY);
 
-    Entity class BaseStation;
-    begin
-      !smart meter events goes here;
-    end
+      !packet is sent from BS to Controller;
 
-    Entity class Controller;
-    begin
-      !smart meter events goes here;
-    end
 
-    Entity class ControllerFailure;
-    begin
-      !smart meter events goes here;
-    end
+      !packet is queued in controller;
+
+
+      !packet is sent to Server;
+
+
+      !log cool data;
+
+    end;
 
     Entity class Server;
     begin
       !smart meter events goes here;
-    end
+    end;
 
-    Entity class ServerFailure;
-    begin
-      !smart meter events goes here;
-    end
+    !Initiate all the variables/constants/tallys and stuff.
+    Then, make som objects,
+    Then, run the program;
 
-  end
-end
-=======
+    METER_TO_BASE_STATION_TIME_DELAY := 0.110;
 
->>>>>>> f35c5b2e107075d64aaa11eeb74b4fb6b894c7f0
+    timeBetweenPacketsFromMeter_ :- new NegExp("Meter-BS-delay",0.5);
+
+    measuredDelayFromMeterToBaseStation_ :- new Tally("meterdelay");
+    totalTransferTime_ :- new Tally("totalTime");
+
+
+
+    new SmartMeter("Meter 1").schedule(0);
+    hold(300);
+
+  end;
+end;
