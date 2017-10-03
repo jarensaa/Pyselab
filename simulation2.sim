@@ -1,0 +1,210 @@
+begin
+  external class demos="./demos.atr";
+  demos
+  begin
+
+    real          METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY,
+                  METER_TO_BASE_STATION_TIME_DELAY,
+                  AVARAGE_BASE_STATION_TO_CONTROLLER_DELAY,
+                  AVARAGE_CONTROLLER_PROCESSING_TIME,
+                  AVARAGE_SERVER_PROCESSING_TIME,
+                  PACKETS_PER_SECOND_FROM_METER,
+                  NUMBER_OF_METERS,
+                  SERVER_FAILURE_INTENSITY,
+                  SERVER_RESTART_TIME,
+                  SERVER_SWITCHOVER_TIME,
+                  CONTROLLER_FAILURE_INTENSITY,
+                  CONTROLLER_RESTART_TIME,
+                  NUMBER_OF_ACTIVE_SERVERS,
+                  NUMBER_OF_TOTAL_SERVERS,
+                  PACKETS_TO_SIMULATE;
+
+    ref(RDist)    delayFromBaseStationToController_,
+                  dataProcessingTimeInController_,
+                  dataProcessingTimeInServer_,
+                  randomNumberGenerator_,
+                  timeBetweenPacketsFromMeter_,
+                  serverRestartTime_,
+                  serverSwitchoverTime_,
+                  controllerRestartTime_;
+
+    ref(Res)      controller_,
+                  activeServer_;
+
+    ref(Bin)	    runtimeBin_;
+
+    ref(WaitQ)    ServerQueue_;
+
+    ref(CondQ)    serverWaiting1_,
+                  serverWaiting2_,
+                  serverWaiting3_;
+
+    ref(Tally)    totalTransferTime_,
+                  measuredDelayFromMeterToBaseStation_;
+
+    ref(Count)    lostPackets_,
+                  recievedPackets_,
+                  fastEnoughPackets_,
+                  tooSlowPackets_,
+                  testCounter_;
+
+
+    Entity class SmartMeter;
+    begin
+      real time;
+      !smart meter events goes here;
+      loop:
+        time := timeBetweenPacketsFromMeter_.sample;
+        hold(time);
+        new Packet("packet").schedule(now);
+        repeat;
+    end;
+
+
+    Entity class Packet;
+    begin
+      !Set timestamp for packet generation;
+      long real timestamp;
+      timestamp := time;
+
+      !packet goes from meter to BS, check for packet loss;
+      hold(METER_TO_BASE_STATION_TIME_DELAY);
+
+      if randomNumberGenerator_.sample <= METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY then begin
+        lostPackets_.update(1);
+        goto disconnection;
+      end;
+
+      !packet is sent from BS to Controller;
+      hold(delayFromBaseStationToController_.sample);
+
+      !packet is queued in controller;
+
+      controller_.acquire(1);
+      hold(dataProcessingTimeInController_.sample);
+      controller_.release(1);
+
+      ServerQueue_.wait;
+
+      totalTransferTime_.update(time-timestamp);
+      recievedPackets_.update(1);
+      if time-timestamp < 0.2 then fastEnoughPackets_.update(1)
+      else tooSlowPackets_.update(1);
+
+      disconnection:
+      	runtimeBin_.give(1);
+    end;
+
+
+    Entity class Server(ServerQueue_, serverWaiting_);
+    ref(WaitQ) ServerQueue_;
+    ref(CondQ) serverWaiting_;
+    begin
+      ref(Packet) packet_;
+      ref(ServerFailure) serverFailure_;
+      serverFailure_ :- new ServerFailure("failure",this Server, serverWaiting_);
+      serverFailure_.schedule(now);
+
+      passive:
+          activeServer_.acquire(1);
+
+      passiveActiveSwitch:
+          if interrupted = 1 then
+            begin
+              activeServer_.release(1);
+              goto broken;
+            end;
+          hold(serverSwitchoverTime_.sample);
+
+      active:
+        loop:
+        if interrupted = 1 then
+          begin
+            activeServer_.release(1);
+            goto broken;
+          end;
+          packet_ :- ServerQueue_.coopt;
+          hold(dataProcessingTimeInServer_.sample);
+          packet_.schedule(now);
+          repeat;
+
+      broken:
+        serverWaiting_.waituntil(interrupted = 0);
+        goto passive;
+
+    end;
+
+    Entity class ServerFailure(server_, serverWaiting_);
+    ref(Server) server_;
+    ref(CondQ) serverWaiting_;
+    begin
+      priority := 1;
+      loop:
+        testCounter_.update(1);
+        hold(1/SERVER_FAILURE_INTENSITY);
+        server_.interrupt(1);
+        hold(serverRestartTime_.sample);
+        server_.interrupt(0);
+        serverWaiting_.signal;
+        repeat;
+    end;
+
+    METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY := 0.05;
+    METER_TO_BASE_STATION_TIME_DELAY := 0.110;
+    AVARAGE_BASE_STATION_TO_CONTROLLER_DELAY := 0.02;
+    AVARAGE_CONTROLLER_PROCESSING_TIME := 0.0001;
+    AVARAGE_SERVER_PROCESSING_TIME := 0.002;
+
+    SERVER_FAILURE_INTENSITY := 10;
+    SERVER_RESTART_TIME := 0.001;
+    SERVER_SWITCHOVER_TIME := 0.005;
+    CONTROLLER_FAILURE_INTENSITY := 10;
+    CONTROLLER_RESTART_TIME := 0.002;
+
+    NUMBER_OF_ACTIVE_SERVERS := 2;
+    NUMBER_OF_TOTAL_SERVERS := 3;
+
+    PACKETS_PER_SECOND_FROM_METER := 0.1;
+    NUMBER_OF_METERS := 10;
+    PACKETS_TO_SIMULATE := 1000000;
+
+
+    timeBetweenPacketsFromMeter_ :- new NegExp("metertime",PACKETS_PER_SECOND_FROM_METER * NUMBER_OF_METERS);
+    randomNumberGenerator_ :- new Uniform("numbergenerator",0,1);
+    delayFromBaseStationToController_ :- new NegExp("BS-Controler",1/AVARAGE_BASE_STATION_TO_CONTROLLER_DELAY);
+    dataProcessingTimeInController_ :- new NegExp("controller",1/AVARAGE_CONTROLLER_PROCESSING_TIME);
+    dataProcessingTimeInServer_ :- new NegExp("server",1/AVARAGE_SERVER_PROCESSING_TIME);
+
+    serverRestartTime_ :- new NegExp("serverRestart",1/SERVER_RESTART_TIME);
+    serverSwitchoverTime_ :- new NegExp("serverSwitchover",1/SERVER_SWITCHOVER_TIME);
+    controllerRestartTime_ :- new NegExp("controllerRestart",1/CONTROLLER_RESTART_TIME);
+
+    ServerQueue_ :- new WaitQ("ServerQueue");
+
+
+    lostPackets_ :-       new Count("lostPackets");
+    recievedPackets_ :-   new Count("recieved");
+    fastEnoughPackets_ :- new Count("fast packets");
+    tooSlowPackets_ :-    new Count("slow packets");
+    testCounter_ :-       new Count("test");
+
+    totalTransferTime_ :- new Tally("totalTime");
+    runtimeBin_ :-   new Bin("runtimeBin", 0);
+
+    controller_ :-   new Res("controller",1);
+    activeServer_ :- new Res("activeServer",NUMBER_OF_ACTIVE_SERVERS);
+
+    serverWaiting1_ :- new CondQ("waitServer1");
+    serverWaiting2_ :- new CondQ("waitServer2");
+    serverWaiting3_ :- new CondQ("waitServer3");
+
+    new Server("server1",ServerQueue_,serverWaiting1_).schedule(0);
+    new Server("server2",ServerQueue_,serverWaiting2_).schedule(0);
+    new Server("server3",ServerQueue_,serverWaiting3_).schedule(0);
+
+    new SmartMeter("Meter 1").schedule(0);
+
+    !runtimeBin_.take(PACKETS_TO_SIMULATE);
+    hold(10000);
+  end;
+end;
