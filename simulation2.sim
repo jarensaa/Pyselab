@@ -17,7 +17,8 @@ begin
                   CONTROLLER_RESTART_TIME,
                   NUMBER_OF_ACTIVE_SERVERS,
                   NUMBER_OF_TOTAL_SERVERS,
-                  PACKETS_TO_SIMULATE;
+                  PACKETS_TO_SIMULATE,
+                  SIMULATION_TIME;
 
     ref(RDist)    delayFromBaseStationToController_,
                   dataProcessingTimeInController_,
@@ -35,10 +36,6 @@ begin
 
     ref(WaitQ)    ServerQueue_;
 
-    ref(CondQ)    serverWaiting1_,
-                  serverWaiting2_,
-                  serverWaiting3_;
-
     ref(Tally)    totalTransferTime_,
                   measuredDelayFromMeterToBaseStation_;
 
@@ -46,8 +43,13 @@ begin
                   recievedPackets_,
                   fastEnoughPackets_,
                   tooSlowPackets_,
-                  testCounter_;
+                  testCounter_,
+                  serverRestarts_,
+                  serverCount1_,
+                  serverCount2_,
+                  serverCount3_;
 
+    integer       numberOfActiveServers;
 
     Entity class SmartMeter;
     begin
@@ -66,6 +68,8 @@ begin
       !Set timestamp for packet generation;
       long real timestamp;
       timestamp := time;
+
+      priority := 1;
 
       !packet goes from meter to BS, check for packet loss;
       hold(METER_TO_BASE_STATION_TIME_DELAY);
@@ -96,55 +100,57 @@ begin
     end;
 
 
-    Entity class Server(ServerQueue_, serverWaiting_);
-    ref(WaitQ) ServerQueue_;
-    ref(CondQ) serverWaiting_;
+    Entity class Server(number_, ServerCount_);
+    ref(Count) ServerCount_;
+    integer number_;
     begin
       ref(Packet) packet_;
       ref(ServerFailure) serverFailure_;
-      serverFailure_ :- new ServerFailure("failure",this Server, serverWaiting_);
+
+      serverFailure_ :- new ServerFailure("failure",number_,this Server);
       serverFailure_.schedule(now);
 
-      passive:
-          activeServer_.acquire(1);
 
       passiveActiveSwitch:
-          if interrupted = 1 then
+        if numberOfActiveServers < 1 then hold(SIMULATION_TIME);
+        numberOfActiveServers := numberOfActiveServers - 1;
+          if interrupted>0 then
             begin
-              activeServer_.release(1);
+              numberOfActiveServers := numberOfActiveServers + 1;
               goto broken;
             end;
           hold(serverSwitchoverTime_.sample);
 
       active:
         loop:
-        if interrupted = 1 then
-          begin
-            activeServer_.release(1);
-            goto broken;
-          end;
+          if interrupted>0 then
+            begin
+              numberOfActiveServers := numberOfActiveServers + 1;
+              goto broken;
+            end;
+          ServerCount_.update(1);
           packet_ :- ServerQueue_.coopt;
           hold(dataProcessingTimeInServer_.sample);
           packet_.schedule(now);
           repeat;
 
       broken:
-        serverWaiting_.waituntil(interrupted = 0);
-        goto passive;
+        if interrupted>0 then hold(SIMULATION_TIME);
+        serverRestarts_.update(1);
+        goto passiveActiveSwitch;
 
     end;
 
-    Entity class ServerFailure(server_, serverWaiting_);
+    Entity class ServerFailure(number_,server_);
     ref(Server) server_;
-    ref(CondQ) serverWaiting_;
+    integer number_;
     begin
-      priority := 1;
+      priority := 3;
       loop:
         hold(1/SERVER_FAILURE_INTENSITY);
         server_.interrupt(1);
         hold(serverRestartTime_.sample);
         server_.interrupt(0);
-        serverWaiting_.signal;
         repeat;
     end;
 
@@ -161,12 +167,14 @@ begin
     CONTROLLER_RESTART_TIME := 0.002;
 
     NUMBER_OF_ACTIVE_SERVERS := 2;
-    NUMBER_OF_TOTAL_SERVERS := 3;
+    NUMBER_OF_TOTAL_SERVERS := 2;
 
     PACKETS_PER_SECOND_FROM_METER := 0.1;
-    NUMBER_OF_METERS := 10;
-    PACKETS_TO_SIMULATE := 1000000;
+    NUMBER_OF_METERS := 1000;
+    PACKETS_TO_SIMULATE := 10000;
+    SIMULATION_TIME := 1000;
 
+    numberOfActiveServers := 2;
 
     timeBetweenPacketsFromMeter_ :- new NegExp("metertime",PACKETS_PER_SECOND_FROM_METER * NUMBER_OF_METERS);
     randomNumberGenerator_ :- new Uniform("numbergenerator",0,1);
@@ -180,11 +188,14 @@ begin
 
     ServerQueue_ :- new WaitQ("ServerQueue");
 
-
     lostPackets_ :-       new Count("lostPackets");
     recievedPackets_ :-   new Count("recieved");
     fastEnoughPackets_ :- new Count("fast packets");
     tooSlowPackets_ :-    new Count("slow packets");
+    serverRestarts_ :-    new Count("broken");
+    serverCount1_   :-    new Count("server1");
+    serverCount2_   :-    new Count("server2");
+    serverCount3_   :-    new Count("server3");
 
     totalTransferTime_ :- new Tally("totalTime");
     runtimeBin_ :-   new Bin("runtimeBin", 0);
@@ -192,17 +203,13 @@ begin
     controller_ :-   new Res("controller",1);
     activeServer_ :- new Res("activeServer",NUMBER_OF_ACTIVE_SERVERS);
 
-    serverWaiting1_ :- new CondQ("waitServer1");
-    serverWaiting2_ :- new CondQ("waitServer2");
-    serverWaiting3_ :- new CondQ("waitServer3");
-
-    new Server("server1",ServerQueue_,serverWaiting1_).schedule(0);
-    new Server("server2",ServerQueue_,serverWaiting2_).schedule(0);
-    new Server("server3",ServerQueue_,serverWaiting3_).schedule(0);
+    new Server("server1",1,serverCount1_).schedule(0);
+    new Server("server2",2,serverCount2_).schedule(0);
+    new Server("server3",3,serverCount3_).schedule(0);
 
     new SmartMeter("Meter 1").schedule(0);
 
-    !runtimeBin_.take(PACKETS_TO_SIMULATE);
-    hold(10000);
+    hold(SIMULATION_TIME);
+
   end;
 end;
