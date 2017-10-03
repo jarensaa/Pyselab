@@ -140,7 +140,6 @@ begin
     begin
       priority := 1;
       loop:
-        testCounter_.update(1);
         hold(1/SERVER_FAILURE_INTENSITY);
         server_.interrupt(1);
         hold(serverRestartTime_.sample);
@@ -186,7 +185,6 @@ begin
     recievedPackets_ :-   new Count("recieved");
     fastEnoughPackets_ :- new Count("fast packets");
     tooSlowPackets_ :-    new Count("slow packets");
-    testCounter_ :-       new Count("test");
 
     totalTransferTime_ :- new Tally("totalTime");
     runtimeBin_ :-   new Bin("runtimeBin", 0);
