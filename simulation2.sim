@@ -20,7 +20,6 @@ begin
                   CONTROLLER_FAILURE_INTENSITY,
                   CONTROLLER_RESTART_TIME,
                   NUMBER_OF_ACTIVE_SERVER_SLOTS,
-                  NUMBER_OF_TOTAL_SERVERS,
                   PACKETS_TO_SIMULATE,
                   SIMULATION_TIME,
                   elhubDowntime,
@@ -159,11 +158,11 @@ begin
           if ServerQueue_.LENGTH = 0 and interrupted = 0 then hold(SIMULATION_TIME);
 
           if interrupted>0 then
-          begin
-            numberOfAvailableActiveServerSlots := numberOfAvailableActiveServerSlots + 1;
-            numberOfActiveServers := numberOfActiveServers - 1;
-            goto broken;
-          end;
+            begin
+              numberOfAvailableActiveServerSlots := numberOfAvailableActiveServerSlots + 1;
+              numberOfActiveServers := numberOfActiveServers - 1;
+              goto broken;
+            end;
 
           ServerCount_.update(1);
           packet_ :- ServerQueue_.coopt;
@@ -288,12 +287,11 @@ begin
 
     SERVER_FAILURE_INTENSITY := 10;
     CONTROLLER_FAILURE_INTENSITY := 10;
-    SERVER_RESTART_TIME := 0.001;
-    SERVER_SWITCHOVER_TIME := 0.0002;
+    SERVER_RESTART_TIME :=     0.001;
+    SERVER_SWITCHOVER_TIME :=  0.0002;
     CONTROLLER_RESTART_TIME := 0.0005;
 
-    NUMBER_OF_ACTIVE_SERVER_SLOTS := 2;
-    NUMBER_OF_TOTAL_SERVERS := 2;
+    NUMBER_OF_ACTIVE_SERVER_SLOTS := 3;
 
     PACKETS_PER_SECOND_FROM_METER := 0.1;
     NUMBER_OF_METERS := 1000;
@@ -309,13 +307,13 @@ begin
     serverDownTime      := 0;
     controllerDownTime  := 0;
     numberOfActiveServers := 0;
-    numberOfAvailableActiveServerSlots := 2;
+    numberOfAvailableActiveServerSlots := NUMBER_OF_ACTIVE_SERVER_SLOTS;
 
     controllerIsBroken := false;
 
 
     ! *******************************************************
-      ******************** OBJECT INTS **********************
+      ******************* OBJECT INITS **********************
       ******************************************************* ;
 
     timeBetweenPacketsFromMeter_ :- new NegExp("metertime",PACKETS_PER_SECOND_FROM_METER * NUMBER_OF_METERS);
@@ -354,7 +352,6 @@ begin
     runtimeBin_ :-   new Bin("runtimeBin", 0);
 
     controller_ :-   new Res("controller",1);
-    activeServer_ :- new Res("activeServer",NUMBER_OF_ACTIVE_SERVER_SLOTS);
 
     ! *******************************************************
       ******************* MAIN PROGRAM **********************
