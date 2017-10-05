@@ -15,11 +15,13 @@ begin
                   SERVER_SWITCHOVER_TIME,
                   CONTROLLER_FAILURE_INTENSITY,
                   CONTROLLER_RESTART_TIME,
-                  NUMBER_OF_ACTIVE_SERVERS,
+                  NUMBER_OF_ACTIVE_SERVER_SLOTS,
                   NUMBER_OF_TOTAL_SERVERS,
                   PACKETS_TO_SIMULATE,
                   SIMULATION_TIME,
-                  elhubDowntime;
+                  elhubDowntime,
+                  serverDownTime,
+                  controllerDownTime;
 
     ref(RDist)    delayFromBaseStationToController_,
                   dataProcessingTimeInController_,
@@ -37,10 +39,14 @@ begin
 
     ref(WaitQ)    ServerQueue_;
 
-    ref(CondQ)    FailureMonitor_;
+    ref(CondQ)    elhubMonitor_,
+                  serverMonitor_,
+                  controllerMonitor_;
 
     ref(Tally)    totalTransferTime_,
-                  elhubDownTime_;
+                  elhubDownTime_,
+                  serverDownTime_,
+                  controllerDownTime_;
 
     ref(Count)    lostPackets_,
                   recievedPackets_,
@@ -51,14 +57,14 @@ begin
                   serverCount1_,
                   serverCount2_,
                   serverCount3_,
-                  elhubDowntimeCount_;
+                  elhubDowntimeCount_,
+                  serverDownTimeCount_,
+                  controllerDownTimeCount_;
 
-    integer       numberOfAvailableActiveServerSlots;
+    integer       numberOfAvailableActiveServerSlots,
+                  numberOfActiveServers;
 
-    boolean       controllerIsBroken,
-                  server1IsBroken,
-                  server2IsBroken,
-                  server3IsBroken;
+    boolean       controllerIsBroken;
 
     Entity class SmartMeter;
     begin
@@ -109,34 +115,38 @@ begin
     end;
 
 
-    Entity class Server(ServerCount_, serverIsBroken);
+    Entity class Server(ServerCount_);
     ref(Count) ServerCount_;
-    boolean serverIsBroken;
     begin
       ref(Packet) packet_;
       ref(ServerFailure) serverFailure_;
 
-      serverFailure_ :- new ServerFailure("failure",this Server,serverIsBroken);
+      serverFailure_ :- new ServerFailure("failure",this Server);
       serverFailure_.schedule(now);
 
 
       passiveActiveSwitch:
-        if numberOfAvailableActiveServerSlots < 1 then hold(SIMULATION_TIME);
+        if numberOfAvailableActiveServerSlots = 0 and interrupted = 0 then hold(SIMULATION_TIME);
           if interrupted>0 then
             begin
               goto broken;
             end;
-          hold(serverSwitchoverTime_.sample);
+
           numberOfAvailableActiveServerSlots := numberOfAvailableActiveServerSlots - 1;
+
+          hold(serverSwitchoverTime_.sample);
+          numberOfActiveServers := numberOfActiveServers + 1;
+          serverMonitor_.signal;
 
       active:
         loop:
-        
+
           if ServerQueue_.LENGTH = 0 and interrupted = 0 then hold(SIMULATION_TIME);
 
           if interrupted>0 then
           begin
             numberOfAvailableActiveServerSlots := numberOfAvailableActiveServerSlots + 1;
+            numberOfActiveServers := numberOfActiveServers - 1;
             goto broken;
           end;
 
@@ -147,30 +157,29 @@ begin
           repeat;
 
       broken:
+        serverMonitor_.signal;
         if interrupted>0 then hold(SIMULATION_TIME);
         serverRestarts_.update(1);
         goto passiveActiveSwitch;
 
     end;
 
-    Entity class ServerFailure(server_,serverIsBroken);
+    ! *******************************************************
+      ********************** FAILURES ***********************
+      ******************************************************* ;
+
+    Entity class ServerFailure(server_);
     ref(Server) server_;
-    boolean serverIsBroken;
     begin
       priority := 3;
       loop:
         hold(1/SERVER_FAILURE_INTENSITY);
 
         server_.interrupt(1);
-        serverIsBroken := true;
-        FailureMonitor_.signal;
 
         hold(serverRestartTime_.sample);
 
-        serverIsBroken := false;
         server_.interrupt(0);
-        FailureMonitor_.signal;
-
 
         repeat;
     end;
@@ -182,31 +191,78 @@ begin
 
         controller_.acquire(1);
         controllerIsBroken := true;
-        FailureMonitor_.signal;
+        controllerMonitor_.signal;
 
         hold(controllerRestartTime_.sample);
 
         controllerIsBroken := false;
-        FailureMonitor_.signal;
         controller_.release(1);
+        controllerMonitor_.signal;
 
         repeat;
     end;
+
+
+    ! *******************************************************
+      ********************** MONITORS ***********************
+      ******************************************************* ;
 
     Entity class ELHUBmonitor;
     begin
-      long real timestamp;
+      long real elhubTimestamp;
       loop:
-        FailureMonitor_.waituntil(controllerIsBroken or numberOfAvailableActiveServerSlots = 2);
-        timestamp := time;
+        elhubMonitor_.waituntil(controllerIsBroken or numberOfAvailableActiveServerSlots >= NUMBER_OF_ACTIVE_SERVER_SLOTS);
+        elhubtimestamp := time;
 
-        FailureMonitor_.waituntil(not controllerIsBroken and numberOfAvailableActiveServerSlots < 2);
-        elhubDowntime := elhubdowntime + (time - timestamp);
+        elhubMonitor_.waituntil(not controllerIsBroken and numberOfAvailableActiveServerSlots < NUMBER_OF_ACTIVE_SERVER_SLOTS);
+
+        elhubDowntime := elhubdowntime + (time - elhubtimestamp);
         elhubDowntimeCount_.update(1);
-        elhubDownTime_.update(time-timestamp);
+        elhubDownTime_.update(time-elhubtimestamp);
+
         repeat;
     end;
 
+    Entity class Servermonitor;
+    begin
+      long real serverTimestamp;
+      loop:
+        serverMonitor_.waituntil(numberOfActiveServers = 0);
+        serverTimestamp := time;
+        elhubMonitor_.signal;
+
+        serverMonitor_.waituntil(numberOfActiveServers > 0);
+
+        serverDownTime := serverDownTime + (time - serverTimestamp);
+        serverDownTimeCount_.update(1);
+        serverDownTime_.update(time-serverTimestamp);
+        elhubMonitor_.signal;
+
+        repeat;
+    end;
+
+    Entity class ControllerMonitor;
+    begin
+      long real controllerTimestamp;
+      loop:
+        controllerMonitor_.waituntil(controllerIsBroken);
+        controllerTimestamp := time;
+        elhubMonitor_.signal;
+
+        controllerMonitor_.waituntil(not controllerIsBroken);
+
+        controllerDownTime := controllerDownTime + (time - controllerTimestamp);
+        controllerDownTimeCount_.update(1);
+        controllerDownTime_.update(time-controllerTimestamp);
+        elhubMonitor_.signal;
+
+        repeat;
+    end;
+
+
+    ! *******************************************************
+      ********************** CONSTANTS **********************
+      ******************************************************* ;
 
     METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY := 0.05;
     METER_TO_BASE_STATION_TIME_DELAY := 0.110;
@@ -215,12 +271,12 @@ begin
     AVARAGE_SERVER_PROCESSING_TIME := 0.002;
 
     SERVER_FAILURE_INTENSITY := 10;
-    SERVER_RESTART_TIME := 0.001;
-    SERVER_SWITCHOVER_TIME := 0.005;
     CONTROLLER_FAILURE_INTENSITY := 10;
-    CONTROLLER_RESTART_TIME := 0.002;
+    SERVER_RESTART_TIME := 0.001;
+    SERVER_SWITCHOVER_TIME := 0.0002;
+    CONTROLLER_RESTART_TIME := 0.0005;
 
-    NUMBER_OF_ACTIVE_SERVERS := 2;
+    NUMBER_OF_ACTIVE_SERVER_SLOTS := 2;
     NUMBER_OF_TOTAL_SERVERS := 2;
 
     PACKETS_PER_SECOND_FROM_METER := 0.1;
@@ -228,13 +284,23 @@ begin
     PACKETS_TO_SIMULATE := 10000;
     SIMULATION_TIME := 1000;
 
-    elhubDowntime := 0;
+
+    ! *******************************************************
+      ********************** VARIABLES **********************
+      ******************************************************* ;
+
+    elhubDowntime       := 0;
+    serverDownTime      := 0;
+    controllerDownTime  := 0;
+    numberOfActiveServers := 0;
     numberOfAvailableActiveServerSlots := 2;
 
     controllerIsBroken := false;
-    server1IsBroken := false;
-    server2IsBroken := false;
-    server3IsBroken := false;
+
+
+    ! *******************************************************
+      ******************** OBJECT INTS **********************
+      ******************************************************* ;
 
     timeBetweenPacketsFromMeter_ :- new NegExp("metertime",PACKETS_PER_SECOND_FROM_METER * NUMBER_OF_METERS);
     randomNumberGenerator_ :- new Uniform("numbergenerator",0,1);
@@ -247,38 +313,61 @@ begin
     controllerRestartTime_ :- new NegExp("controllerRestart",1/CONTROLLER_RESTART_TIME);
 
     ServerQueue_ :- new WaitQ("ServerQueue");
-    FailureMonitor_ :- new CondQ("failureMonitorQ");
 
-    lostPackets_ :-       new Count("lostPackets");
-    recievedPackets_ :-   new Count("recieved");
-    fastEnoughPackets_ :- new Count("fast packets");
-    tooSlowPackets_ :-    new Count("slow packets");
-    serverRestarts_ :-    new Count("broken");
-    serverCount1_   :-    new Count("server1");
-    serverCount2_   :-    new Count("server2");
-    serverCount3_   :-    new Count("server3");
-    elhubDowntimeCount_ :-new Count("elhubdowntime");
+    elhubMonitor_       :- new CondQ("elhubCondQ");
+    serverMonitor_      :- new CondQ("serverCondQ");
+    controllerMonitor_  :- new CondQ("contrCondQ");
+
+    lostPackets_ :-             new Count("lostPackets");
+    recievedPackets_ :-         new Count("recieved");
+    fastEnoughPackets_ :-       new Count("fast packets");
+    tooSlowPackets_ :-          new Count("slow packets");
+    serverRestarts_ :-          new Count("broken");
+    serverCount1_   :-          new Count("server1");
+    serverCount2_   :-          new Count("server2");
+    serverCount3_   :-          new Count("server3");
+    elhubDowntimeCount_ :-      new Count("elhubdown");
+    serverDownTimeCount_:-      new Count("serverDown");
+    controllerDownTimeCount_ :- new Count("controllerDown");
 
     totalTransferTime_ :- new Tally("totalTime");
     elhubDownTime_     :- new Tally("elhubDown");
+    serverDownTime_    :- new Tally("serverDown");
+    controllerDownTime_:- new Tally("controllerDown");
 
     runtimeBin_ :-   new Bin("runtimeBin", 0);
 
     controller_ :-   new Res("controller",1);
-    activeServer_ :- new Res("activeServer",NUMBER_OF_ACTIVE_SERVERS);
+    activeServer_ :- new Res("activeServer",NUMBER_OF_ACTIVE_SERVER_SLOTS);
 
-    new Server("server1",serverCount1_,server1IsBroken).schedule(0);
-    new Server("server2",serverCount2_,server2IsBroken).schedule(0);
-    new Server("server3",serverCount3_,server3IsBroken).schedule(0);
+    ! *******************************************************
+      ******************* MAIN PROGRAM **********************
+      ******************************************************* ;
+
+    new Server("server1",serverCount1_).schedule(0);
+    new Server("server2",serverCount2_).schedule(1/(3*SERVER_FAILURE_INTENSITY));
+    new Server("server3",serverCount3_).schedule(2/(3*SERVER_FAILURE_INTENSITY));
 
     new ControllerFailure("controllerFailure").schedule(0);
+
     new ELHUBmonitor("monitor").schedule(0);
+    new Servermonitor("server").schedule(0);
+    new ControllerMonitor("controller").schedule(0);
 
     new SmartMeter("Meter 1").schedule(0);
 
     hold(SIMULATION_TIME);
 
-    outreal(elhubDowntime,3,10); outimage;
+
+    ! *******************************************************
+      ************************ OUTPUT ***********************
+      ******************************************************* ;
+
+    outtext("elhub  unavailability:       "); outreal(elhubDowntime/SIMULATION_TIME,3,10); outimage;
+    outtext("server  unavailability:      "); outreal(serverDownTime/SIMULATION_TIME,3,10); outimage;
+    outtext("controller  unavailability:  "); outreal(controllerDowntime/SIMULATION_TIME,3,10); outimage;
+
+
 
   end;
 end;
