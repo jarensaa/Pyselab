@@ -3,6 +3,10 @@ begin
   demos
   begin
 
+  ! *******************************************************
+    ******************** DECLARATIONS *********************
+    ******************************************************* ;
+
     real          METER_TO_BASE_STATION_PACKETLOSS_PROBABILITY,
                   METER_TO_BASE_STATION_TIME_DELAY,
                   AVARAGE_BASE_STATION_TO_CONTROLLER_DELAY,
@@ -66,6 +70,14 @@ begin
 
     boolean       controllerIsBroken;
 
+
+    ! *******************************************************
+      ********************** ENTITIES ***********************
+      ******************************************************* ;
+
+
+    ! ********************* SMART METER ********************* ;
+
     Entity class SmartMeter;
     begin
       real time;
@@ -77,6 +89,7 @@ begin
         repeat;
     end;
 
+    ! ********************* PACKET ********************* ;
 
     Entity class Packet;
     begin
@@ -114,6 +127,8 @@ begin
       	runtimeBin_.give(1);
     end;
 
+
+    ! ********************* SERVER ********************* ;
 
     Entity class Server(ServerCount_);
     ref(Count) ServerCount_;
@@ -163,6 +178,7 @@ begin
         goto passiveActiveSwitch;
 
     end;
+
 
     ! *******************************************************
       ********************** FAILURES ***********************
